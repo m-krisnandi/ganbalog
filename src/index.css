@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    'Inter Variable', 'Noto Sans JP Variable', 'Noto Sans Myanmar',
+    'Myanmar Sangam MN', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    sans-serif;
+
+  /* Aksen tunggal: vermillion (merah Jepang) */
+  --color-accent: #e0472f;
+  --color-accent-strong: #c2371f;
+  --color-accent-soft: #fdeae5;
+  --color-accent-soft-dark: #3d1712;
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Tailwind v4 preflight set button cursor ke `default` — override di luar @layer
+   supaya menang di cascade. */
+button:not(:disabled),
+a,
+select:not(:disabled),
+summary,
+[role='button']:not(:disabled),
+label:has(input[type='checkbox']),
+label:has(input[type='radio']),
+input[type='checkbox']:not(:disabled),
+input[type='radio']:not(:disabled) {
+  cursor: pointer !important;
+}
+
+body {
+  @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  overscroll-behavior-y: none;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: white;
+}
