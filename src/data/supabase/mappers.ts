@@ -28,6 +28,7 @@ export function mapPlan(row: Record<string, unknown>): Plan {
     startDate: toIsoDate(row.start_date as string),
     targetDate: toIsoDate(row.target_date as string),
     status: row.status as Plan['status'],
+    sourceTemplateId: (row.source_template_id as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }
@@ -42,6 +43,7 @@ export function mapPlanInsert(plan: Plan): Record<string, unknown> {
     start_date: plan.startDate,
     target_date: plan.targetDate,
     status: plan.status,
+    source_template_id: plan.sourceTemplateId,
     created_at: plan.createdAt,
     updated_at: plan.updatedAt,
   }
@@ -55,6 +57,7 @@ export function mapMaterial(row: Record<string, unknown>): Material {
     unitLabel: row.unit_label as string,
     totalUnits: row.total_units as number,
     doneUnits: row.done_units as number,
+    tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }
@@ -68,6 +71,7 @@ export function mapMaterialInsert(material: Material): Record<string, unknown> {
     unit_label: material.unitLabel,
     total_units: material.totalUnits,
     done_units: material.doneUnits,
+    tags: material.tags,
     created_at: material.createdAt,
     updated_at: material.updatedAt,
   }
@@ -120,6 +124,7 @@ export function mapScheduleInsert(item: ScheduleItem): Record<string, unknown> {
 export function mapTask(row: Record<string, unknown>): Task {
   return {
     id: row.id as Id,
+    userId: (row.user_id as Id) ?? ('local-user' as Id),
     planId: row.plan_id as Id,
     date: toIsoDate(row.date as string),
     title: row.title as string,
@@ -136,6 +141,7 @@ export function mapTask(row: Record<string, unknown>): Task {
 export function mapTaskInsert(task: Task): Record<string, unknown> {
   return {
     id: task.id,
+    user_id: task.userId,
     plan_id: task.planId,
     date: task.date,
     title: task.title,
@@ -231,6 +237,7 @@ export function mapWorkspace(row: Record<string, unknown>): Workspace {
   return {
     id: row.id as Id,
     name: row.name as string,
+    inviteCode: (row.invite_code as string | null) ?? null,
     createdAt: row.created_at as string,
   }
 }

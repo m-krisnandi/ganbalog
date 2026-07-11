@@ -195,7 +195,10 @@ export class SupabaseScheduleRepository implements ScheduleRepository {
 }
 
 export class SupabaseTaskRepository implements TaskRepository {
-  constructor(private readonly client: SupabaseClient) {}
+  constructor(
+    private readonly client: SupabaseClient,
+    private readonly getUserId: () => Id,
+  ) {}
 
   async getByPlanAndDate(planId: Id, date: IsoDate): Promise<Task[]> {
     const { data, error } = await this.client
@@ -203,12 +206,17 @@ export class SupabaseTaskRepository implements TaskRepository {
       .select('*')
       .eq('plan_id', planId)
       .eq('date', date)
+      .eq('user_id', this.getUserId())
     throwIfError(error)
     return (data ?? []).map((row) => mapTask(row as Record<string, unknown>))
   }
 
   async getByPlan(planId: Id): Promise<Task[]> {
-    const { data, error } = await this.client.from('tasks').select('*').eq('plan_id', planId)
+    const { data, error } = await this.client
+      .from('tasks')
+      .select('*')
+      .eq('plan_id', planId)
+      .eq('user_id', this.getUserId())
     throwIfError(error)
     return (data ?? []).map((row) => mapTask(row as Record<string, unknown>))
   }
@@ -225,6 +233,7 @@ export class SupabaseTaskRepository implements TaskRepository {
       .select('*', { count: 'exact', head: true })
       .eq('plan_id', planId)
       .eq('date', date)
+      .eq('user_id', this.getUserId())
       .eq('status', 'done')
     throwIfError(error)
     return count ?? 0
@@ -295,6 +304,15 @@ export class SupabaseStudyLogRepository implements StudyLogRepository {
       .from('study_logs')
       .select('*')
       .eq('user_id', userId)
+      .eq('plan_id', planId)
+    throwIfError(error)
+    return (data ?? []).map((row) => mapStudyLog(row as Record<string, unknown>))
+  }
+
+  async getByPlan(planId: Id): Promise<StudyLog[]> {
+    const { data, error } = await this.client
+      .from('study_logs')
+      .select('*')
       .eq('plan_id', planId)
     throwIfError(error)
     return (data ?? []).map((row) => mapStudyLog(row as Record<string, unknown>))
@@ -434,8 +452,22 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     const { error } = await this.client.from('workspaces').upsert({
       id: workspace.id,
       name: workspace.name,
+      invite_code: workspace.inviteCode,
       created_at: workspace.createdAt,
     })
+    throwIfError(error)
+  }
+
+  async updateInviteCode(workspaceId: Id, inviteCode: string): Promise<void> {
+    const { error } = await this.client
+      .from('workspaces')
+      .update({ invite_code: inviteCode })
+      .eq('id', workspaceId)
+    throwIfError(error)
+  }
+
+  async updateName(workspaceId: Id, name: string): Promise<void> {
+    const { error } = await this.client.from('workspaces').update({ name }).eq('id', workspaceId)
     throwIfError(error)
   }
 
@@ -456,6 +488,15 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       role: member.role,
       joined_at: member.joinedAt,
     })
+    throwIfError(error)
+  }
+
+  async removeMember(workspaceId: Id, userId: Id): Promise<void> {
+    const { error } = await this.client
+      .from('workspace_members')
+      .delete()
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
     throwIfError(error)
   }
 }

@@ -92,7 +92,7 @@ function buildLocalContainer(
   const preferences = new LocalUserPreferenceRepository(db)
   const meta = new LocalMetaRepository(db)
 
-  const taskRepository = new LocalTaskRepository(db)
+  const taskRepository = new LocalTaskRepository(db, () => actor.userId)
   const scheduleRepository = new LocalScheduleRepository(db)
 
   const planService = new PlanService(
@@ -128,6 +128,7 @@ function buildLocalContainer(
     ids,
     audit,
     logger,
+    actor,
   )
 
   return {
@@ -173,7 +174,7 @@ function buildSupabaseContainer(
     actor,
   )
 
-  const taskRepository = new SupabaseTaskRepository(supabase)
+  const taskRepository = new SupabaseTaskRepository(supabase, () => actor.userId)
   const scheduleRepository = new SupabaseScheduleRepository(supabase)
 
   const planService = new PlanService(
@@ -209,6 +210,7 @@ function buildSupabaseContainer(
     ids,
     audit,
     logger,
+    actor,
   )
 
   const auth = new AuthService(
@@ -216,6 +218,7 @@ function buildSupabaseContainer(
     actor,
     workspaces,
     profiles,
+    preferences,
     clock,
     ids,
     logger,

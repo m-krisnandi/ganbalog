@@ -1,7 +1,7 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { format, parseISO } from 'date-fns'
 import { useTranslation } from 'react-i18next'
-import { FileSpreadsheet, FileJson, Upload } from 'lucide-react'
+import { FileSpreadsheet, FileJson, Upload, Download } from 'lucide-react'
 import { dateLocale } from '../../../app/i18n'
 import { UuidGenerator } from '../../../core/ids'
 import { useServices } from '../../../core/di/ServicesProvider'
@@ -14,14 +14,15 @@ import {
   type GanbaLogBackup,
 } from '../../../data/backup'
 import { parseExcelBackup } from '../../../data/import-excel'
-import { Button, Card, SectionTitle } from '../../components/primitives'
+import { downloadExcelTemplate } from '../../../data/export-excel'
+import { ListPanel } from '../../components/primitives'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 
 type PendingImport =
   | { kind: 'json'; backup: GanbaLogBackup }
   | { kind: 'excel'; buffer: ArrayBuffer; summary: { planCount: number; exportedAt: string } }
 
-export function DataSection() {
+export function DataSection({ highlightImport = false }: { highlightImport?: boolean }) {
   const { t, i18n } = useTranslation()
   const locale = dateLocale(i18n.language)
   const { clock, cloudEnabled } = useServices()
@@ -33,10 +34,19 @@ export function DataSection() {
   const exportExcel = useExportBackup('excel')
   const importJson = useImportBackup()
   const importExcel = useImportExcelBackup()
+  const [templateLoading, setTemplateLoading] = useState(false)
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [pulseImport, setPulseImport] = useState(highlightImport)
   const exporting = exportJson.isPending || exportExcel.isPending
   const importing = importJson.isPending || importExcel.isPending
+
+  useEffect(() => {
+    if (!highlightImport) return
+    setPulseImport(true)
+    const timer = window.setTimeout(() => setPulseImport(false), 2400)
+    return () => window.clearTimeout(timer)
+  }, [highlightImport])
 
   const handlePickFile = () => {
     setImportError(null)
@@ -78,7 +88,7 @@ export function DataSection() {
 
       if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer()
-        const parsed = parseExcelBackup(buffer, clock, ids.current)
+        const parsed = await parseExcelBackup(buffer, clock, ids.current)
         setPendingImport({
           kind: 'excel',
           buffer,
@@ -138,52 +148,79 @@ export function DataSection() {
         : ''
 
   return (
-    <section className="space-y-2">
-      <SectionTitle>{t('settings.data')}</SectionTitle>
-      <Card className="space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="ghost"
-            className="w-full"
-            disabled={exporting}
-            onClick={() => exportJson.mutate(undefined)}
-          >
-            <span className="inline-flex items-center gap-2">
-              <FileJson size={16} />
+    <>
+      <ListPanel>
+        <div className="space-y-2 px-4 py-3.5">
+          <p className="text-sm font-medium">{t('settings.exportTitle')}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={exporting}
+              onClick={() => exportJson.mutate(undefined)}
+              className="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-surface-muted px-3 text-sm font-medium transition-colors hover:bg-zinc-200/80 disabled:opacity-50 dark:bg-surface-muted-dark dark:hover:bg-zinc-700"
+            >
+              <FileJson size={16} aria-hidden />
               {t('settings.exportJson')}
-            </span>
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full"
-            disabled={exporting}
-            onClick={() => exportExcel.mutate(undefined)}
-          >
-            <span className="inline-flex items-center gap-2">
-              <FileSpreadsheet size={16} />
+            </button>
+            <button
+              type="button"
+              disabled={exporting}
+              onClick={() => exportExcel.mutate(undefined)}
+              className="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-surface-muted px-3 text-sm font-medium transition-colors hover:bg-zinc-200/80 disabled:opacity-50 dark:bg-surface-muted-dark dark:hover:bg-zinc-700"
+            >
+              <FileSpreadsheet size={16} aria-hidden />
               {t('settings.exportExcel')}
-            </span>
-          </Button>
+            </button>
+          </div>
+          <p className="text-[11px] text-zinc-400">{t('settings.exportHintShort')}</p>
         </div>
-        <p className="text-xs leading-relaxed text-zinc-400">
-          {t('settings.exportExcelHint')}. {t('settings.exportJsonHint')}.
-        </p>
-        <Button
-          variant="ghost"
-          className="w-full"
-          disabled={importing}
-          onClick={handlePickFile}
+
+        <div className="border-t border-border-subtle dark:border-border-subtle-dark">
+          <button
+            type="button"
+            disabled={templateLoading}
+            onClick={() => {
+              setTemplateLoading(true)
+              void downloadExcelTemplate()
+                .catch(() => setImportError(t('settings.templateDownloadFailed')))
+                .finally(() => setTemplateLoading(false))
+            }}
+            className="flex min-h-[52px] w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-muted/40 disabled:opacity-50 dark:hover:bg-surface-muted-dark/40"
+          >
+            <Download size={18} className="shrink-0 text-accent" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{t('settings.downloadExcelTemplate')}</span>
+              <span className="mt-0.5 block text-[11px] text-zinc-400">
+                {t('settings.downloadExcelTemplateHintShort')}
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <div
+          id="settings-import"
+          className={`border-t border-border-subtle dark:border-border-subtle-dark ${
+            pulseImport ? 'bg-accent-soft/40 dark:bg-accent-soft-dark/30' : ''
+          }`}
         >
-          <span className="inline-flex items-center gap-2">
-            <Upload size={16} />
-            {t('settings.importBackup')}
-          </span>
-        </Button>
-        <p className="text-xs text-zinc-400">
-          {isCloud ? t('settings.importCloudHint') : t('settings.importBackupHint')}
-        </p>
-        {importError && <p className="text-xs text-red-500">{importError}</p>}
-      </Card>
+          <button
+            type="button"
+            disabled={importing}
+            onClick={handlePickFile}
+            className="flex min-h-[52px] w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-muted/40 disabled:opacity-50 dark:hover:bg-surface-muted-dark/40"
+          >
+            <Upload size={18} className="shrink-0 text-accent" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{t('settings.importBackup')}</span>
+              <span className="mt-0.5 block text-[11px] text-zinc-400">
+                {isCloud ? t('settings.importCloudHintShort') : t('settings.importBackupHint')}
+              </span>
+            </span>
+          </button>
+        </div>
+      </ListPanel>
+
+      {importError && <p className="px-1 text-xs text-red-500">{importError}</p>}
 
       <input
         ref={fileInputRef}
@@ -207,6 +244,6 @@ export function DataSection() {
         onClose={() => setPendingImport(null)}
         onConfirm={confirmImport}
       />
-    </section>
+    </>
   )
 }

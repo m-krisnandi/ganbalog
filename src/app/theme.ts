@@ -25,7 +25,7 @@ export function applyTheme(mode: ThemeMode): void {
 
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', dark ? '#0c0a09' : '#f4f4f5')
+    ?.setAttribute('content', dark ? '#141210' : '#faf7f2')
 }
 
 /** Ikuti perubahan tema OS secara live saat mode = system. */

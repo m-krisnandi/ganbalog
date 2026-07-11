@@ -26,6 +26,7 @@ import type {
 import {
   supportsMaterialChecklist,
 } from './material-units'
+import { normalizeMaterialTags } from '../material-tags'
 
 export { MATERIAL_CHECKLIST_MAX, supportsMaterialChecklist } from './material-units'
 
@@ -33,6 +34,7 @@ export interface UpdateMaterialInput {
   name: string
   unitLabel: string
   totalUnits: number
+  tags: string[]
 }
 
 const ACTIVE_PLAN_KEY = 'activePlanId'
@@ -42,6 +44,7 @@ export interface NewPlanInput {
   description: string
   startDate: IsoDate
   targetDate: IsoDate
+  sourceTemplateId?: string | null
 }
 
 export interface UpdatePlanInput {
@@ -126,6 +129,7 @@ export class PlanService {
       startDate: input.startDate,
       targetDate: input.targetDate,
       status: 'active',
+      sourceTemplateId: input.sourceTemplateId ?? null,
       createdAt: now,
       updatedAt: now,
     }
@@ -216,6 +220,7 @@ export class PlanService {
     name: string,
     unitLabel: string,
     totalUnits: number,
+    tags: string[] = [],
   ): Promise<Material> {
     const now = this.clock.stamp()
     const material: Material = {
@@ -225,6 +230,7 @@ export class PlanService {
       unitLabel,
       totalUnits,
       doneUnits: 0,
+      tags: normalizeMaterialTags(tags),
       createdAt: now,
       updatedAt: now,
     }
@@ -273,6 +279,7 @@ export class PlanService {
       name: input.name.trim(),
       unitLabel: input.unitLabel.trim() || '—',
       totalUnits,
+      tags: normalizeMaterialTags(input.tags),
       doneUnits: Math.min(material.doneUnits, totalUnits),
       updatedAt: this.clock.stamp(),
     }

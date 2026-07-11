@@ -108,6 +108,7 @@ export class GanbaLogDb extends Dexie {
           await tx.table<Workspace>('workspaces').put({
             id: LOCAL_WORKSPACE_ID,
             name: 'GanbaLog',
+            inviteCode: null,
             createdAt: now,
           })
         }
@@ -123,6 +124,38 @@ export class GanbaLogDb extends Dexie {
           })
         }
       })
+    this.version(4)
+      .stores({
+        tasks: 'id, planId, date, userId, [planId+date], [userId+planId+date]',
+      })
+      .upgrade(async (tx) => {
+        const tasks = await tx.table<Task>('tasks').toArray()
+        for (const task of tasks) {
+          if (!task.userId) {
+            await tx.table<Task>('tasks').update(task.id, { userId: LOCAL_USER_ID })
+          }
+        }
+        const workspaces = await tx.table<Workspace>('workspaces').toArray()
+        for (const workspace of workspaces) {
+          if (workspace.inviteCode === undefined) {
+            await tx.table<Workspace>('workspaces').update(workspace.id, { inviteCode: null })
+          }
+        }
+      })
+    this.version(5).upgrade(async (tx) => {
+      const plans = await tx.table<Plan>('plans').toArray()
+      for (const plan of plans) {
+        if (plan.sourceTemplateId === undefined) {
+          await tx.table<Plan>('plans').update(plan.id, { sourceTemplateId: null })
+        }
+      }
+      const materials = await tx.table<Material>('materials').toArray()
+      for (const material of materials) {
+        if (!material.tags) {
+          await tx.table<Material>('materials').update(material.id, { tags: [] })
+        }
+      }
+    })
   }
 }
 

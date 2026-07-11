@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import type { Clock } from '../core/clock'
 import type { IdGenerator } from '../core/ids'
 import {
@@ -34,16 +33,34 @@ const SHEETS = [
 
 type DataSheet = (typeof SHEETS)[number]
 
+type XlsxModule = typeof import('xlsx')
+
+let xlsxModule: Promise<XlsxModule> | null = null
+let xlsxRuntime: XlsxModule | null = null
+
+function loadXlsx(): Promise<XlsxModule> {
+  xlsxModule ??= import('xlsx')
+  return xlsxModule
+}
+
+function requireXlsx(): XlsxModule {
+  if (!xlsxRuntime) throw new Error('xlsx not loaded')
+  return xlsxRuntime
+}
+
 export interface ExcelParseResult {
   backup: GanbaLogBackup
   sheetsPresent: Set<DataSheet>
 }
 
-export function parseExcelBackup(
+export async function parseExcelBackup(
   buffer: ArrayBuffer,
   clock: Clock,
   ids: IdGenerator,
-): ExcelParseResult {
+): Promise<ExcelParseResult> {
+  const XLSX = await loadXlsx()
+  xlsxRuntime = XLSX
+  try {
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
   const sheetsPresent = new Set<DataSheet>(
     SHEETS.filter((name) => workbook.SheetNames.includes(name)),
@@ -102,6 +119,9 @@ export function parseExcelBackup(
       meta: {},
     },
   }
+  } finally {
+    xlsxRuntime = null
+  }
 }
 
 /** Gabungkan data Excel ke backup penuh — sheet yang tidak ada di Excel tetap dari DB. */
@@ -137,13 +157,14 @@ export function mergeExcelImport(
   return merged
 }
 
-function sheetRows(workbook: XLSX.WorkBook, name: string): Record<string, unknown>[] {
+function sheetRows(workbook: import('xlsx').WorkBook, name: string): Record<string, unknown>[] {
+  const XLSX = requireXlsx()
   const sheet = workbook.Sheets[name]
   if (!sheet) return []
   return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
 }
 
-function readInfoField(workbook: XLSX.WorkBook, field: string): string {
+function readInfoField(workbook: import('xlsx').WorkBook, field: string): string {
   const rows = sheetRows(workbook, 'Info')
   const match = rows.find((row) => str(row.field) === field)
   return match ? str(match.value) : ''
@@ -164,6 +185,7 @@ function parsePlans(
       startDate: isoDate(row.startDate),
       targetDate: isoDate(row.targetDate),
       status: planStatus(row.status),
+      sourceTemplateId: null,
       createdAt: stamp,
       updatedAt: stamp,
     }))
@@ -184,6 +206,7 @@ function parseMaterials(
       unitLabel: str(row.unitLabel) || 'units',
       totalUnits: Math.max(0, num(row.totalUnits)),
       doneUnits: Math.max(0, num(row.doneUnits)),
+      tags: [],
       createdAt: stamp,
       updatedAt: stamp,
     }))
@@ -291,6 +314,7 @@ function parseTasks(
       const status = taskStatus(row.status)
       return {
         id: str(row.id) || ids.next(),
+        userId: str(row.userId) || LOCAL_USER_ID,
         planId: planRef.resolve(str(row.plan)),
         date: isoDate(row.date),
         title: str(row.title),
@@ -361,7 +385,7 @@ function isoDate(value: unknown): string {
   const text = str(value)
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
   if (typeof value === 'number') {
-    const parsed = XLSX.SSF.parse_date_code(value)
+    const parsed = requireXlsx().SSF.parse_date_code(value)
     if (parsed) {
       const y = parsed.y
       const m = String(parsed.m).padStart(2, '0')

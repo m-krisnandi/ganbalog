@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { format, parseISO } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import {
-  BookOpen,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   CircleCheck,
   Flag,
+  Lightbulb,
   Moon,
-  Sprout,
   Timer,
 } from 'lucide-react'
 import type { Checkpoint, IsoDate, StudyLog, Task } from '../../domain/models'
@@ -18,33 +18,120 @@ import {
   useActivePlan,
   useAllTasks,
   useCheckpoints,
+  useGroupStudyLogs,
+  useGroupTaskStats,
   useMaterials,
   useStudyLogs,
+  useWorkspaceInfo,
 } from '../../app/queries'
-import { Button, Card, EmptyState, SectionTitle } from '../components/primitives'
+import { useAuth } from '../../app/auth/AuthProvider'
+import { useServices } from '../../core/di/ServicesProvider'
+import { Button, EmptyState, ListPanel, PageHeader, SectionTitle, StatTile } from '../components/primitives'
 import { NoPlanEmptyState } from '../components/NoPlanEmptyState'
+import { QueryErrorState } from '../components/QueryErrorState'
 import { ProgressBar } from '../components/ProgressBar'
 import { Heatmap } from '../components/Heatmap'
+import { GroupProgress } from '../components/GroupProgress'
 import { Sheet } from '../components/Sheet'
+import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton'
+import {
+  MATERIAL_TAG_IDS,
+  normalizeMaterialTags,
+  type MaterialTagId,
+} from '../../domain/material-tags'
+import { displayTaskTitle } from '../lib/task-display'
+import { computeProgressInsight, type ProgressInsight } from '../lib/progress-insight'
 
 type StatSheet = 'studyDays' | 'tasksDone' | 'hoursLogged'
+type TaskKindFilter = 'all' | 'study' | 'review'
+type MaterialTagFilter = 'all' | MaterialTagId
+type CheckpointFilter = 'all' | 'open' | 'achieved'
+
+function formatStudyDuration(totalMinutes: number): string {
+  if (totalMinutes <= 0) return '—'
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours === 0) return `${minutes}m`
+  if (minutes === 0) return `${hours}h`
+  return `${hours}h ${minutes}m`
+}
 
 export function ProgressPage() {
   const { t, i18n } = useTranslation()
   const locale = dateLocale(i18n.language)
   const navigate = useNavigate()
-  const { data: plan } = useActivePlan()
-  const { data: tasks = [] } = useAllTasks(plan?.id)
-  const { data: materials = [] } = useMaterials(plan?.id)
-  const { data: checkpoints = [] } = useCheckpoints(plan?.id)
-  const { data: studyLogs = [] } = useStudyLogs()
+  const {
+    data: plan,
+    isLoading: planLoading,
+    isError: planError,
+    refetch,
+  } = useActivePlan()
+  const { session, cloudEnabled } = useAuth()
+  const { clock } = useServices()
+  const workspaceQuery = useWorkspaceInfo(session?.workspaceId)
+  const groupLogsQuery = useGroupStudyLogs(plan?.id)
+  const groupTaskStatsQuery = useGroupTaskStats(plan?.id)
+  const tasksQuery = useAllTasks(plan?.id)
+  const materialsQuery = useMaterials(plan?.id)
+  const checkpointsQuery = useCheckpoints(plan?.id)
+  const studyLogsQuery = useStudyLogs()
+
+  const { data: workspaceInfo } = workspaceQuery
+  const { data: groupLogs = [] } = groupLogsQuery
+  const { data: groupTaskStats = [] } = groupTaskStatsQuery
+  const { data: tasks = [] } = tasksQuery
+  const { data: materials = [] } = materialsQuery
+  const { data: checkpoints = [] } = checkpointsQuery
+  const { data: studyLogs = [] } = studyLogsQuery
+
+  const secondaryError =
+    tasksQuery.isError ||
+    materialsQuery.isError ||
+    checkpointsQuery.isError ||
+    studyLogsQuery.isError ||
+    groupLogsQuery.isError ||
+    groupTaskStatsQuery.isError ||
+    workspaceQuery.isError
+
+  const retrySecondary = () => {
+    void tasksQuery.refetch()
+    void materialsQuery.refetch()
+    void checkpointsQuery.refetch()
+    void studyLogsQuery.refetch()
+    void groupLogsQuery.refetch()
+    void groupTaskStatsQuery.refetch()
+    void workspaceQuery.refetch()
+  }
   const [selectedDate, setSelectedDate] = useState<IsoDate | null>(null)
   const [statSheet, setStatSheet] = useState<StatSheet | null>(null)
   const [selectedCheckpoint, setSelectedCheckpoint] = useState<Checkpoint | null>(null)
+  const [taskKindFilter, setTaskKindFilter] = useState<TaskKindFilter>('all')
+  const [materialTagFilter, setMaterialTagFilter] = useState<MaterialTagFilter>('all')
+  const [checkpointFilter, setCheckpointFilter] = useState<CheckpointFilter>('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [heatmapWeeks, setHeatmapWeeks] = useState(8)
+  const activeFilterCount =
+    Number(taskKindFilter !== 'all') +
+    Number(materialTagFilter !== 'all') +
+    Number(checkpointFilter !== 'all')
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (taskKindFilter !== 'all' && task.kind !== taskKindFilter) return false
+      if (materialTagFilter !== 'all') {
+        if (!task.materialId) return false
+        const material = materials.find((item) => item.id === task.materialId)
+        if (!material || !normalizeMaterialTags(material.tags).includes(materialTagFilter)) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [tasks, taskKindFilter, materialTagFilter, materials])
 
   const counts = useMemo(() => {
     const map = new Map<string, number>()
-    for (const task of tasks) {
+    for (const task of filteredTasks) {
       if (task.status !== 'done') continue
       map.set(task.date, (map.get(task.date) ?? 0) + 1)
     }
@@ -52,9 +139,9 @@ export function ProgressPage() {
       if (!map.has(log.date)) map.set(log.date, 1)
     }
     return map
-  }, [tasks, studyLogs])
+  }, [filteredTasks, studyLogs])
 
-  const doneTasks = tasks.filter((task) => task.status === 'done').length
+  const doneTasks = filteredTasks.filter((task) => task.status === 'done').length
   const studyDays = new Set([...counts.keys()]).size
   const totalMinutes = studyLogs.reduce((sum, log) => sum + (log.minutes ?? 0), 0)
 
@@ -68,14 +155,14 @@ export function ProgressPage() {
 
   const tasksByDate = useMemo(() => {
     const map = new Map<string, Task[]>()
-    for (const task of tasks) {
+    for (const task of filteredTasks) {
       if (task.status !== 'done') continue
       const bucket = map.get(task.date)
       if (bucket) bucket.push(task)
       else map.set(task.date, [task])
     }
     return [...map.entries()].sort(([a], [b]) => b.localeCompare(a))
-  }, [tasks])
+  }, [filteredTasks])
 
   const logsWithMinutes = useMemo(
     () =>
@@ -87,8 +174,8 @@ export function ProgressPage() {
 
   const dayTasks = useMemo(() => {
     if (!selectedDate) return []
-    return tasks.filter((task) => task.date === selectedDate && task.status === 'done')
-  }, [tasks, selectedDate])
+    return filteredTasks.filter((task) => task.date === selectedDate && task.status === 'done')
+  }, [filteredTasks, selectedDate])
 
   const dayLog = useMemo(() => {
     if (!selectedDate) return undefined
@@ -101,11 +188,60 @@ export function ProgressPage() {
     setSelectedDate(date)
   }
 
-  if (!plan) {
-    return <NoPlanEmptyState icon={Sprout} />
+  const nextOpenCheckpoint = useMemo(() => {
+    const pool =
+      checkpointFilter === 'all'
+        ? checkpoints.filter((cp) => cp.status === 'open')
+        : checkpointFilter === 'open'
+          ? checkpoints.filter((cp) => cp.status === 'open')
+          : checkpoints.filter((cp) => cp.status === 'achieved')
+
+    if (checkpointFilter === 'achieved') {
+      return (
+        [...pool].sort((a, b) => b.dueDate.localeCompare(a.dueDate))[0] ?? null
+      )
+    }
+
+    return [...pool].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] ?? null
+  }, [checkpoints, checkpointFilter])
+
+  const topMaterials = useMemo(() => {
+    return [...materials]
+      .filter((material) => material.totalUnits > 0)
+      .sort(
+        (a, b) =>
+          b.doneUnits / b.totalUnits - a.doneUnits / a.totalUnits ||
+          b.doneUnits - a.doneUnits,
+      )
+      .slice(0, 3)
+  }, [materials])
+
+  const showHeatmap = studyDays >= 7
+  const showFilters =
+    studyDays >= 14 || materials.some((material) => normalizeMaterialTags(material.tags).length > 0)
+
+  const progressInsight = useMemo(
+    () =>
+      computeProgressInsight(
+        materials,
+        studyDayEntries.map((entry) => entry.date),
+        clock.todayIso(),
+      ),
+    [materials, studyDayEntries, clock],
+  )
+
+  if (planError) {
+    return <QueryErrorState onRetry={() => void refetch()} />
   }
 
-  const sortedCheckpoints = [...checkpoints].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  if (planLoading) {
+    return <PageLoadingSkeleton label={t('progress.title')} />
+  }
+
+  if (!plan) {
+    return <NoPlanEmptyState variant="compact" />
+  }
+
   const selectedDateLabel = selectedDate
     ? format(parseISO(selectedDate), 'EEEE, d MMM yyyy', { locale })
     : ''
@@ -113,100 +249,259 @@ export function ProgressPage() {
   const minutesPart = totalMinutes % 60
 
   return (
-    <div className="space-y-6 pt-6">
-      <header className="px-1">
-        <h1 className="text-xl font-bold">{t('progress.title')}</h1>
-        <p className="mt-0.5 text-sm text-zinc-400">{t('progress.subtitle')}</p>
-      </header>
+    <div className="space-y-6 pt-4">
+      <PageHeader title={t('progress.title')} subtitle={t('progress.subtitle')} />
+
+      {secondaryError && (
+        <QueryErrorState compact onRetry={retrySecondary} />
+      )}
 
       <div className="grid grid-cols-3 gap-2">
-        <StatCard
+        <StatTile
           value={String(studyDays)}
           label={t('progress.studyDays')}
           onClick={() => setStatSheet('studyDays')}
         />
-        <StatCard
+        <StatTile
           value={String(doneTasks)}
           label={t('progress.tasksDone')}
           onClick={() => setStatSheet('tasksDone')}
         />
-        <StatCard
-          value={totalMinutes > 0 ? String(Math.round(totalMinutes / 60)) : '—'}
+        <StatTile
+          value={formatStudyDuration(totalMinutes)}
           label={t('progress.hoursLogged')}
           onClick={() => setStatSheet('hoursLogged')}
         />
       </div>
 
-      <section className="space-y-2">
-        <SectionTitle>{t('progress.consistency')}</SectionTitle>
-        <Card>
-          <Heatmap counts={counts} onSelectDate={openDayDetail} />
-        </Card>
-      </section>
+      {cloudEnabled && workspaceInfo && (
+        <GroupProgress
+          members={workspaceInfo.members}
+          logs={groupLogs}
+          taskStats={groupTaskStats}
+          currentUserId={session?.userId ?? ''}
+        />
+      )}
+
+      <ProgressInsightCard insight={progressInsight} />
+
+      {studyDayEntries.length > 0 && (
+        <ListPanel>
+          <div className="px-4 py-3">
+            <p className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+              {t('progress.recentActivity')}
+            </p>
+            <ul className="mt-2 space-y-1">
+              {studyDayEntries.slice(0, 7).map(({ date, count }) => (
+                <li key={date}>
+                  <button
+                    type="button"
+                    onClick={() => openDayDetail(date)}
+                    className="flex min-h-[44px] w-full cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-surface-muted dark:hover:bg-surface-muted-dark"
+                  >
+                    <span>{format(parseISO(date), 'EEE, d MMM', { locale })}</span>
+                    <span className="text-xs text-zinc-400">
+                      {t('progress.studyDayEntry', { count })}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {studyDayEntries.length > 7 && (
+              <button
+                type="button"
+                onClick={() => setStatSheet('studyDays')}
+                className="mt-2 min-h-[44px] w-full text-center text-xs font-medium text-accent"
+              >
+                {t('progress.seeAllActivity')}
+              </button>
+            )}
+          </div>
+        </ListPanel>
+      )}
+
+      {showFilters && (
+      <ListPanel>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((value) => !value)}
+          aria-expanded={filtersOpen}
+          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-surface-muted/50 dark:hover:bg-surface-muted-dark/50"
+        >
+          <span className="min-w-0 flex-1 text-sm font-medium">{t('progress.filters')}</span>
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">
+              {activeFilterCount}
+            </span>
+          )}
+          <ChevronDown
+            size={17}
+            className={`text-zinc-400 transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {filtersOpen && (
+          <div className="space-y-4 border-t border-border-subtle px-4 py-4 dark:border-border-subtle-dark">
+            <FilterGroup label={t('progress.filterTaskType')}>
+              {(['all', 'study', 'review'] as const).map((kind) => (
+                <FilterChip
+                  key={kind}
+                  active={taskKindFilter === kind}
+                  label={t(
+                    kind === 'all'
+                      ? 'progress.filterAll'
+                      : kind === 'study'
+                        ? 'progress.filterStudy'
+                        : 'progress.filterReview',
+                  )}
+                  onClick={() => setTaskKindFilter(kind)}
+                />
+              ))}
+            </FilterGroup>
+            <FilterGroup label={t('progress.filterByTag')}>
+              <FilterChip
+                active={materialTagFilter === 'all'}
+                label={t('progress.filterAll')}
+                onClick={() => setMaterialTagFilter('all')}
+              />
+              {MATERIAL_TAG_IDS.map((tag) => (
+                <FilterChip
+                  key={tag}
+                  active={materialTagFilter === tag}
+                  label={t(`materialTags.${tag}`)}
+                  onClick={() => setMaterialTagFilter(tag)}
+                />
+              ))}
+            </FilterGroup>
+            <FilterGroup label={t('progress.filterCheckpointStatus')}>
+              {(['all', 'open', 'achieved'] as const).map((status) => (
+                <FilterChip
+                  key={status}
+                  active={checkpointFilter === status}
+                  label={t(
+                    status === 'all'
+                      ? 'progress.filterAll'
+                      : status === 'open'
+                        ? 'progress.filterOpen'
+                        : 'progress.filterAchieved',
+                  )}
+                  onClick={() => setCheckpointFilter(status)}
+                />
+              ))}
+            </FilterGroup>
+          </div>
+        )}
+      </ListPanel>
+      )}
 
       <section className="space-y-2">
-        <SectionTitle>{t('plan.materials')}</SectionTitle>
-        {materials.length === 0 ? (
-          <EmptyState icon={BookOpen} text={t('plan.emptyMaterials')} />
-        ) : (
-          <Card className="divide-y divide-zinc-100 p-0 dark:divide-zinc-800">
-            {materials.map((material) => (
+        <SectionTitle>{t('progress.consistency')}</SectionTitle>
+        {showHeatmap ? (
+          <div className="rounded-xl border border-border-subtle bg-surface-raised p-4 dark:border-border-subtle-dark dark:bg-surface-raised-dark">
+            <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">{t('progress.heatmapHint')}</p>
+            <Heatmap counts={counts} weeks={heatmapWeeks} onSelectDate={openDayDetail} />
+            {heatmapWeeks < 18 && (
               <button
-                key={material.id}
                 type="button"
-                onClick={() => navigate(`/plan?material=${material.id}`)}
-                aria-label={t('plan.viewMaterial', { name: material.name })}
-                className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                onClick={() => setHeatmapWeeks(18)}
+                className="mt-3 min-h-[44px] w-full text-center text-xs font-medium text-accent"
               >
+                {t('progress.expandHeatmap')}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3 rounded-xl border border-dashed border-border-subtle px-4 py-6 text-center dark:border-border-subtle-dark">
+            <p className="text-sm text-zinc-600 dark:text-zinc-300">
+              {t('progress.heatmapLocked', { count: Math.max(0, 7 - studyDays) })}
+            </p>
+            <Button variant="ghost" className="mx-auto text-xs" onClick={() => navigate('/')}>
+              {t('progress.heatmapLockedCta')}
+            </Button>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2 px-1">
+          <SectionTitle>{t('progress.planSnapshot')}</SectionTitle>
+          <Button variant="ghost" className="h-8 min-h-[44px] px-2 text-xs" onClick={() => navigate('/plan')}>
+            {t('progress.editPlan')}
+          </Button>
+        </div>
+
+        <ListPanel>
+          <div className="border-b border-border-subtle px-4 py-3.5 dark:border-border-subtle-dark">
+            <p className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+              {checkpointFilter === 'achieved'
+                ? t('progress.latestMilestone')
+                : t('progress.nextMilestone')}
+            </p>
+            {nextOpenCheckpoint ? (
+              <button
+                type="button"
+                onClick={() => setSelectedCheckpoint(nextOpenCheckpoint)}
+                className="mt-2 flex w-full cursor-pointer items-center gap-3 text-left"
+              >
+                <Flag size={16} className="shrink-0 text-accent" aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                    <p className="truncate text-sm font-medium">{material.name}</p>
-                    <span className="shrink-0 text-xs text-zinc-400">
-                      {material.doneUnits}/{material.totalUnits} {material.unitLabel}
-                    </span>
-                  </div>
-                  <ProgressBar value={material.doneUnits} max={material.totalUnits} />
+                  <p className="truncate text-sm font-medium">{nextOpenCheckpoint.title}</p>
+                  <p className="mt-0.5 text-xs text-zinc-400">
+                    {format(parseISO(nextOpenCheckpoint.dueDate), 'd MMM yyyy', { locale })}
+                  </p>
                 </div>
                 <ChevronRight size={18} className="shrink-0 text-zinc-300" />
               </button>
-            ))}
-          </Card>
-        )}
-      </section>
+            ) : (
+              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                {t('progress.noOpenMilestone')}
+              </p>
+            )}
+          </div>
 
-      <section className="space-y-2">
-        <SectionTitle>{t('plan.checkpoints')}</SectionTitle>
-        {sortedCheckpoints.length === 0 ? (
-          <EmptyState icon={Flag} text={t('plan.emptyCheckpoints')} />
-        ) : (
-          <Card className="divide-y divide-zinc-100 p-0 dark:divide-zinc-800">
-            {sortedCheckpoints.map((checkpoint) => (
-              <button
-                key={checkpoint.id}
-                type="button"
-                onClick={() => setSelectedCheckpoint(checkpoint)}
-                className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+          <div className="px-4 py-3.5">
+            <p className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+              {t('progress.bookProgress')}
+            </p>
+            {topMaterials.length === 0 ? (
+              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                {t('plan.emptyMaterials')}
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-3">
+                {topMaterials.map((material) => (
+                  <li key={material.id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/plan?material=${material.id}`)}
+                      className="flex w-full cursor-pointer items-center gap-3 text-left"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-baseline justify-between gap-2">
+                          <p className="truncate text-sm font-medium">{material.name}</p>
+                          <span className="shrink-0 text-xs text-zinc-400">
+                            {material.doneUnits}/{material.totalUnits}
+                          </span>
+                        </div>
+                        <ProgressBar value={material.doneUnits} max={material.totalUnits} />
+                      </div>
+                      <ChevronRight size={18} className="shrink-0 text-zinc-300" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {materials.length > topMaterials.length && (
+              <Button
+                variant="ghost"
+                className="mt-3 w-full text-xs"
+                onClick={() => navigate('/plan#materials')}
               >
-                <span
-                  className={`size-2.5 shrink-0 rounded-full ${
-                    checkpoint.status === 'achieved' ? 'bg-accent' : 'bg-zinc-300 dark:bg-zinc-600'
-                  }`}
-                />
-                <p
-                  className={`min-w-0 flex-1 text-sm ${
-                    checkpoint.status === 'achieved' ? 'text-zinc-400 line-through' : ''
-                  }`}
-                >
-                  {checkpoint.title}
-                </p>
-                <span className="shrink-0 text-xs text-zinc-400">
-                  {format(parseISO(checkpoint.dueDate), 'd MMM', { locale })}
-                </span>
-                <ChevronRight size={18} className="shrink-0 text-zinc-300" />
-              </button>
-            ))}
-          </Card>
-        )}
+                {t('progress.viewAllInPlan')}
+              </Button>
+            )}
+          </div>
+        </ListPanel>
       </section>
 
       <Sheet
@@ -337,25 +632,62 @@ export function ProgressPage() {
   )
 }
 
-function StatCard({
-  value,
+function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">{label}</p>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
+  )
+}
+
+function ProgressInsightCard({ insight }: { insight: ProgressInsight }) {
+  const { t } = useTranslation()
+
+  const message =
+    insight.kind === 'gap'
+      ? t('progress.insight.gap', { days: insight.days })
+      : insight.kind === 'lagging'
+        ? t('progress.insight.lagging', {
+            name: insight.material.name,
+            percent: insight.percent,
+          })
+        : t('progress.insight.onTrack')
+
+  return (
+    <div className="flex gap-3 rounded-2xl border border-accent/20 bg-accent-soft/40 px-4 py-3.5 dark:border-accent-soft-dark/40 dark:bg-accent-soft-dark/30">
+      <Lightbulb size={18} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold tracking-wide text-accent uppercase">
+          {t('progress.insight.title')}
+        </p>
+        <p className="mt-1 text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">{message}</p>
+      </div>
+    </div>
+  )
+}
+
+function FilterChip({
   label,
+  active,
   onClick,
 }: {
-  value: string
   label: string
+  active: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="cursor-pointer text-left transition-transform active:scale-[0.98]"
+      aria-pressed={active}
+      className={`cursor-pointer rounded-full px-3 py-2 text-[11px] font-medium transition-colors ${
+        active
+          ? 'bg-accent text-white'
+          : 'bg-surface-muted text-zinc-500 hover:bg-zinc-200 dark:bg-surface-muted-dark dark:text-zinc-400'
+      }`}
     >
-      <Card className="text-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
-        <p className="text-2xl font-bold text-accent">{value}</p>
-        <p className="text-[11px] text-zinc-400">{label}</p>
-      </Card>
+      {label}
     </button>
   )
 }
@@ -438,9 +770,9 @@ function StudyDayDetail({
               >
                 <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-accent" />
                 <div className="min-w-0 flex-1">
-                  <p>{task.title}</p>
+                  <p>{displayTaskTitle(task.title, task.kind)}</p>
                   {task.kind === 'review' && (
-                    <p className="mt-0.5 text-xs text-zinc-400">{t('today.review')}</p>
+                    <p className="mt-0.5 text-xs text-zinc-400">{t('task.reviewHint')}</p>
                   )}
                 </div>
               </li>
