@@ -126,14 +126,24 @@ export class LocalScheduleRepository implements ScheduleRepository {
 }
 
 export class LocalTaskRepository implements TaskRepository {
-  constructor(private readonly db: GanbaLogDb) {}
+  constructor(
+    private readonly db: GanbaLogDb,
+    private readonly getUserId: () => Id,
+  ) {}
 
-  getByPlanAndDate(planId: Id, date: IsoDate): Promise<Task[]> {
-    return this.db.tasks.where('[planId+date]').equals([planId, date]).toArray()
+  async getByPlanAndDate(planId: Id, date: IsoDate): Promise<Task[]> {
+    const userId = this.getUserId()
+    const tasks = await this.db.tasks.where('[planId+date]').equals([planId, date]).toArray()
+    return tasks.filter((t) => t.userId === userId)
   }
 
   getByPlan(planId: Id): Promise<Task[]> {
-    return this.db.tasks.where('planId').equals(planId).toArray()
+    const userId = this.getUserId()
+    return this.db.tasks
+      .where('planId')
+      .equals(planId)
+      .filter((t) => t.userId === userId)
+      .toArray()
   }
 
   getById(id: Id): Promise<Task | undefined> {
@@ -141,8 +151,9 @@ export class LocalTaskRepository implements TaskRepository {
   }
 
   async countDoneByPlanAndDate(planId: Id, date: IsoDate): Promise<number> {
+    const userId = this.getUserId()
     const tasks = await this.db.tasks.where('[planId+date]').equals([planId, date]).toArray()
-    return tasks.filter((t) => t.status === 'done').length
+    return tasks.filter((t) => t.userId === userId && t.status === 'done').length
   }
 
   async save(task: Task): Promise<void> {
@@ -187,6 +198,10 @@ export class LocalStudyLogRepository implements StudyLogRepository {
 
   getByUserAndPlan(userId: Id, planId: Id): Promise<StudyLog[]> {
     return this.db.studyLogs.where('[userId+planId]').equals([userId, planId]).toArray()
+  }
+
+  getByPlan(planId: Id): Promise<StudyLog[]> {
+    return this.db.studyLogs.where('planId').equals(planId).toArray()
   }
 
   getByUserPlanDate(userId: Id, planId: Id, date: IsoDate): Promise<StudyLog | undefined> {
@@ -297,12 +312,32 @@ export class LocalWorkspaceRepository implements WorkspaceRepository {
     await this.db.workspaces.put(workspace)
   }
 
+  async updateInviteCode(workspaceId: Id, inviteCode: string): Promise<void> {
+    const workspace = await this.db.workspaces.get(workspaceId)
+    if (!workspace) return
+    await this.db.workspaces.put({ ...workspace, inviteCode })
+  }
+
+  async updateName(workspaceId: Id, name: string): Promise<void> {
+    const workspace = await this.db.workspaces.get(workspaceId)
+    if (!workspace) return
+    await this.db.workspaces.put({ ...workspace, name })
+  }
+
   getMembers(workspaceId: Id): Promise<WorkspaceMember[]> {
     return this.db.workspaceMembers.where('workspaceId').equals(workspaceId).toArray()
   }
 
   async addMember(member: WorkspaceMember): Promise<void> {
     await this.db.workspaceMembers.put(member)
+  }
+
+  async removeMember(workspaceId: Id, userId: Id): Promise<void> {
+    const member = await this.db.workspaceMembers
+      .where('[workspaceId+userId]')
+      .equals([workspaceId, userId])
+      .first()
+    if (member) await this.db.workspaceMembers.delete(member.id)
   }
 }
 

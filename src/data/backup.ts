@@ -14,7 +14,6 @@ import type {
 import type { GanbaLogDb } from './local/db'
 import { LOCAL_USER_ID, LOCAL_WORKSPACE_ID } from '../core/session/constants'
 import { exportBackupFromCloud, importBackupToCloud } from './cloud-import'
-import { mergeExcelImport, parseExcelBackup } from './import-excel'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Id } from '../domain/models'
 
@@ -162,8 +161,9 @@ export class BackupService {
   }
 
   async importFromExcel(buffer: ArrayBuffer): Promise<void> {
+    const { parseExcelBackup, mergeExcelImport } = await import('./import-excel')
     const current = await this.export()
-    const { backup: partial, sheetsPresent } = parseExcelBackup(buffer, this.clock, this.ids)
+    const { backup: partial, sheetsPresent } = await parseExcelBackup(buffer, this.clock, this.ids)
     const merged = mergeExcelImport(current, partial, sheetsPresent)
     await this.import(merged)
   }
@@ -196,18 +196,27 @@ export function normalizeBackup(backup: GanbaLogBackup): GanbaLogBackup {
   const plans = backup.plans.map((plan) => ({
     ...plan,
     workspaceId: plan.workspaceId ?? LOCAL_WORKSPACE_ID,
+    sourceTemplateId: plan.sourceTemplateId ?? null,
+  }))
+  const materials = backup.materials.map((material) => ({
+    ...material,
+    tags: material.tags ?? [],
   }))
   const studyLogs = backup.studyLogs.map((log) => ({
     ...log,
     userId: log.userId ?? LOCAL_USER_ID,
     planId: log.planId ?? defaultPlanId,
   }))
+  const tasks = backup.tasks.map((task) => ({
+    ...task,
+    userId: task.userId ?? LOCAL_USER_ID,
+  }))
   const auditEvents = backup.auditEvents.map((event) => ({
     ...event,
     actorUserId: event.actorUserId ?? null,
     actorDisplayName: event.actorDisplayName ?? null,
   }))
-  return { ...backup, plans, studyLogs, auditEvents }
+  return { ...backup, plans, materials, studyLogs, tasks, auditEvents }
 }
 
 function validateBackup(data: unknown): asserts data is GanbaLogBackup {

@@ -1,30 +1,49 @@
 # GanbaLog (頑張る + Log)
 
-Aplikasi jadwal belajar JLPT — PWA minimalis, mobile-first, local-first.
+Aplikasi belajar ber-target untuk orang yang **susah konsisten** — PWA minimalis, mobile-first, local-first.
+
+JLPT, TOEIC, IELTS, nihongo bisnis, mensetsu, sertifikasi apapun: yang penting ada **target**, **langkah harian**, dan **ritme yang terjaga**.
+
 Tagline: **継続は力なり** (konsistensi adalah kekuatan).
 
-Dibangun sesuai [JLPT_STUDY_PLANNER_PLAN.md](../JLPT_STUDY_PLANNER_PLAN.md).
+## Untuk siapa?
+
+- Kamu punya tujuan belajar (ujian, sertifikasi, skill baru) tapi sering putus di tengah
+- Butuh checklist harian supaya tidak bingung "hari ini ngapain?"
+- Mau belajar bareng teman dan saling lihat progress (mode cloud)
+
+## Navigasi (4 tab)
+
+| Tab | Fungsi |
+|-----|--------|
+| **Today** | Checklist harian, streak, countdown target — tap nama plan untuk ganti plan |
+| **My plan** | Jadwal · Buku · Milestone (segmented); hub plan (buat/ganti/sample/share) |
+| **Stats** | Angka headline, aktivitas terbaru, heatmap (unlock setelah 7 hari), progress grup |
+| **Settings** | Akun/grup, bahasa, tema, backup data, opsi lanjutan (arsip plan, import JSON, log) |
 
 ## Fitur
 
-- **Today** — task harian dari jadwal mingguan, one-tap completion, countdown ke hari ujian, chip durasi belajar (opsional).
-- **Fukushū otomatis** — setiap task belajar yang selesai otomatis dijadwalkan review di +3/+7/+21 hari; boleh dilewati tanpa penalti.
-- **Plan** — jadwal mingguan (edit lewat bottom sheet), buku/materi dengan progress bar, checkpoint per periode.
-- **Progress** — heatmap konsistensi gaya GitHub, statistik hari belajar/task selesai/jam, status semua materi & checkpoint.
-- **Multi-plan** — buat plan baru (N1, bisnis nihongo, mensetsu, dll.), arsipkan yang lama, **plan aktif per-user** (pilihan Anda tidak mengubah tampilan orang lain).
-- **Shared workspace (opsional)** — dengan Supabase: semua member lihat & edit semua plan, realtime refresh, login Google.
-- **Audit trail** — semua aktivitas (buat/ubah/hapus/selesai) tercatat dan bisa dilihat di Settings → Riwayat.
-- **Error log** — error runtime tercatat ke IndexedDB dan bisa dilihat di Settings → Diagnostik (berguna untuk debugging di HP).
-- **PWA** — installable ke home screen (iOS/Android), offline via service worker, dark mode.
-- Saat pertama dibuka, plan **JLPT N2 — Desember 2026** langsung ter-seed lengkap dengan materi (SKM Bunpou/Dokkai/Choukai, N2 Tango 3000, Kanji Master), jadwal mingguan, dan checkpoint per bulan.
+- **Today** — task harian (study + catch-up review dalam satu list), one-tap completion, countdown ke target, log waktu opsional, streak dari task selesai.
+- **Review otomatis** — setiap task belajar selesai dijadwalkan review +3/+7/+21 hari; boleh dilewati.
+- **My plan** — jadwal mingguan (Mon–Fri bisa di-collapse), materi dengan tag & progress, milestone; setup guide 2 langkah untuk plan kosong.
+- **Stats** — snapshot plan, filter (muncul setelah cukup data), heatmap 8→18 minggu, kartu grup (cloud).
+- **Multi-plan** — hub di My plan / Today: buat blank, dari sample (JLPT/TOEIC/IELTS), edit, share link, export JSON, arsip.
+- **Grup belajar (cloud)** — undang via kode; progress grup di tab Stats; kelola akun di Settings.
+- **PWA** — modal install otomatis (Android/desktop), iOS via Settings, offline banner, toast update SW.
+- **Onboarding** — default plan kosong; opsional pilih sample.
+- **i18n** — English, Indonesia, 日本語, Myanmar.
 
 ## Menjalankan
 
 ```bash
+cd ganbalog
 npm install
-npm run dev       # development
+npm run dev       # development (port 5173)
 npm run build     # production build (dist/)
 npm run preview   # preview hasil build (perlu untuk tes PWA/service worker)
+npm run pwa:icons # regenerate PWA icons (scripts/generate-pwa-icons.mjs) setelah ganti public/logo.png
+npm run lint      # oxlint
+npm test          # vitest unit tests
 ```
 
 ## Tech stack
@@ -33,46 +52,107 @@ Vite 8 · React 19 · TypeScript · Tailwind CSS 4 · TanStack Query 5 · Zustan
 
 ## Arsitektur
 
-Berlapis dengan dependency injection — setiap layer hanya bergantung pada interface layer di bawahnya (Dependency Inversion):
+Berlapis dengan dependency injection:
 
 ```
 src/
 ├── domain/               # Inti — tidak tahu soal DB maupun UI
-│   ├── models.ts         # Entitas: Plan, Material, ScheduleItem, Task,
-│   │                     # Checkpoint, StudyLog, AuditEvent, LogEntry
-│   ├── repositories.ts   # Kontrak repository (port)
-│   └── services/         # Logika bisnis: PlanService, TaskService,
-│                         # StudyLogService, ReviewPolicy (fukushū)
-├── data/
-│   ├── local/            # Adapter IndexedDB (Dexie) — implementasi port
-│   ├── supabase/         # Adapter Supabase + SQL migration
-│   └── seed.ts           # Seed plan N2 pertama kali
-├── core/
-│   ├── di/               # Composition root (container) + ServicesProvider
-│   ├── auth/             # Google login + workspace bootstrap
-│   ├── session/          # Actor context (userId, workspaceId)
-│   ├── logging/          # CompositeLogger, ConsoleSink, PersistentSink,
-│   │                     # ErrorBoundary, global error handlers
-│   ├── audit/            # AuditService
-│   ├── clock.ts          # Abstraksi waktu (testable)
-│   └── ids.ts            # Abstraksi ID generator
-├── app/                  # Hook TanStack Query + store tema (Zustand)
-└── ui/                   # Halaman & komponen — hanya memakai hook app/
+├── data/                 # IndexedDB + Supabase adapters, study templates
+├── core/                 # Auth, DI, logging, workspace
+├── app/                  # TanStack Query + i18n + PWA
+└── ui/                   # Halaman & komponen
 ```
 
 ### Mode lokal vs cloud
 
-Tanpa env Supabase, app berjalan **local-first** (IndexedDB). Untuk workspace bersama:
+| | Lokal (tanpa Supabase) | Cloud (Supabase) |
+|---|---|---|
+| Penyimpanan | IndexedDB di perangkat | Postgres + sync realtime |
+| Task harian | Satu user | **Per anggota** |
+| Plan / jadwal / materi | Pribadi | **Dibagi** di grup |
+| Progress | Pribadi | Pribadi + **kartu grup** |
+| Login | Tidak perlu | Google OAuth |
 
-1. Buat project Supabase, jalankan `supabase/migrations/001_collaborative_schema.sql`.
-2. Aktifkan Google OAuth di Supabase Auth.
-3. Salin `.env.example` → `.env` dan isi `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` dari Dashboard → Settings → API.
-4. `npm run dev` — login lewat Settings → Workspace.
+Tanpa env Supabase, app berjalan **local-first** (IndexedDB).
 
-Container (`src/core/di/container.ts`) otomatis memilih repository lokal atau Supabase.
+#### Setup cloud (grup belajar)
+
+1. Buat project Supabase.
+2. Jalankan migration berurutan: **`001` → `003` → `004` → `005` → `006` → `007`**
+   - **Jangan jalankan `002`** — sudah digantikan oleh `004`.
+3. Aktifkan **Google OAuth** + redirect URL production & dev.
+4. Salin `.env.example` → `.env`, isi `VITE_SUPABASE_*`.
+5. `npm run dev` → login → **Settings → Account** untuk workspace.
+
+Migration **007**: `plans.source_template_id`, `materials.tags`.
 
 ## Deploy
 
-Static build — deploy `dist/` ke Vercel/Cloudflare Pages/Netlify gratis.
-Untuk SPA routing, arahkan fallback ke `index.html` (otomatis di Vercel dengan
-framework preset Vite).
+Static build — deploy `dist/` ke Vercel/Cloudflare Pages/Netlify.
+Jalankan `npm run build` sebelum deploy.
+
+## Checklist sebelum publish (cloud)
+
+- [ ] Migration **001, 003–007** di Supabase (skip 002)
+- [ ] Google OAuth redirect URL production
+- [ ] `npm run lint && npm test && npm run build` lulus
+- [ ] Tes join grup + progress realtime
+- [ ] Halaman `/legal`
+- [ ] Tes import plan via link share + JSON
+
+## Checklist lokal / PWA personal
+
+- [x] Mode tanpa Supabase (IndexedDB)
+- [x] Onboarding plan kosong + sample template
+- [x] Export/import plan JSON & link share
+- [x] Background study reminder (SW + Periodic Sync di Android Chrome PWA)
+- [x] Toast reload setelah update service worker
+- [ ] Tes install PWA di iOS/Android (lihat **QA manual** di bawah)
+- [ ] Tes offline banner (cloud) & reload setelah update SW
+- [ ] Uji 3–5 pengguna non-teknis (copy task di bawah)
+
+### QA manual — PWA & offline
+
+Jalankan **`npm run build && npm run preview`** (service worker hanya aktif di production build).
+
+#### Android (Chrome)
+
+1. Buka preview URL — modal **Install GanbaLog** muncul otomatis (Android Chrome / desktop).
+2. Tap **Install app** → dialog native browser.
+3. Setelah terinstall, buka dari browser lagi — modal **Open in app** jika terdeteksi.
+4. **iOS:** tidak ada modal otomatis — Settings → Preferences → Add to Home Screen.
+2. Buka dari home screen (standalone) — pastikan bottom nav tidak menutupi konten di Today, Plan, Stats, Settings.
+3. **Offline:** matikan Wi‑Fi/data → buka app → Today & Plan masih load (IndexedDB). Cloud: banner offline muncul.
+4. **Update SW:** deploy build baru → buka app → toast “versi baru” → tap **Reload** → halaman refresh.
+5. **Reminder:** Settings → aktifkan reminder → izinkan notifikasi → (opsional) tunggu jam reminder atau uji dengan set jam = jam sekarang + 1 menit via devtools tidak applicable — set jam ke jam berikutnya, biarkan PWA di background (Android).
+
+#### iOS (Safari → Add to Home Screen)
+
+1. Install PWA dari Safari.
+2. Buka standalone — cek safe area (notch) dan scroll ke bawah Settings/Plan.
+3. **Offline:** mode pesawat → app tetap buka untuk mode lokal.
+4. **Reminder:** iOS terbatas — reminder background tidak dijamin; foreground reminder saat app terbuka tetap jalan.
+
+#### Reload / regression cepat (desktop)
+
+```bash
+npm run lint && npm test && npm run build && npm run preview
+```
+
+- [ ] Today: complete task, streak, log time
+- [ ] Plan: segmented tabs, tambah material, milestone
+- [ ] Stats: insight card, heatmap setelah 7 hari (seed/dev)
+- [ ] Settings: Help FAQ, text size, contrast, reminder toggle
+- [ ] Plan hub: ganti plan, sample, share link
+
+### Skrip uji pengguna non-teknis (15 menit)
+
+Berikan tanpa dokumentasi — amati di mana mereka bingung:
+
+1. “Apa yang harus kamu lakukan hari ini?” (harus ke Today)
+2. “Ganti rencana belajarmu.” (Plan hub / tap nama plan)
+3. “Lihat apakah kamu konsisten minggu ini.” (Stats)
+4. “Ajak teman belajar bareng.” (Settings → Study group — skip jika lokal)
+5. “Cari bantuan kalau bingung.” (Settings → Help)
+
+Catat: tab pertama yang mereka tap, istilah yang mereka tidak pahami, apakah Settings terasa “admin”.

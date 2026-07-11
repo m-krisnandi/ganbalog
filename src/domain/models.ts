@@ -14,9 +14,13 @@ export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
 export type PlanStatus = 'active' | 'archived'
 
+/** Built-in sample id when plan was created from a code template; null = blank/custom/imported */
+export type SourceTemplateId = string | null
+
 export interface Workspace {
   id: Id
   name: string
+  inviteCode: string | null
   createdAt: IsoStamp
 }
 
@@ -46,6 +50,8 @@ export interface Plan {
   /** Tanggal target, misal hari ujian */
   targetDate: IsoDate
   status: PlanStatus
+  /** null = blank, custom, or imported from shared template */
+  sourceTemplateId: SourceTemplateId
   createdAt: IsoStamp
   updatedAt: IsoStamp
 }
@@ -58,6 +64,8 @@ export interface Material {
   unitLabel: string
   totalUnits: number
   doneUnits: number
+  /** Categories for filtering, e.g. grammar, vocab, listening */
+  tags: string[]
   createdAt: IsoStamp
   updatedAt: IsoStamp
 }
@@ -89,6 +97,7 @@ export type TaskStatus = 'open' | 'done' | 'skipped'
 /** Instance harian yang bisa dicentang di halaman Today */
 export interface Task {
   id: Id
+  userId: Id
   planId: Id
   date: IsoDate
   title: string

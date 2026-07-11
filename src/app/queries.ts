@@ -11,10 +11,14 @@ import {
   type UseMutationOptions,
   type UseMutationResult,
 } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { useServices } from '../core/di/ServicesProvider'
 import { downloadBackupFile, type GanbaLogBackup } from '../data/backup'
 import { downloadExcelBackup } from '../data/export-excel'
-import type { Checkpoint, Id, IsoDate, ScheduleItem, Weekday } from '../domain/models'
+import { queueFlashToast } from './flash-toast'
+import type { Checkpoint, Id, IsoDate, ScheduleItem, Task, Weekday } from '../domain/models'
+import { useToastStore } from './toast-store'
+import i18n from './i18n'
 
 type BoundMutation<TVariables> = Pick<
   UseMutationResult<unknown, Error, TVariables>,
@@ -27,11 +31,30 @@ type BoundMutation<TVariables> = Pick<
   mutateAsync: (variables: TVariables) => Promise<unknown>
 }
 
-function useAppMutation<TData = unknown, TError = Error, TVariables = void>(
-  options: UseMutationOptions<TData, TError, TVariables>,
-): UseMutationResult<TData, TError, TVariables> {
+function useAppMutation<
+  TData = unknown,
+  TError = Error,
+  TVariables = void,
+  TContext = unknown,
+>(
+  options: UseMutationOptions<TData, TError, TVariables, TContext>,
+): UseMutationResult<TData, TError, TVariables, TContext> {
   const queryClient = useQueryClient()
-  return useMutation(options, queryClient)
+  const { onError, ...rest } = options
+  return useMutation(
+    {
+      ...rest,
+      onError: (error, variables, onMutateResult, context) => {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : i18n.t('common.actionFailed')
+        useToastStore.getState().show(message, 'error')
+        onError?.(error, variables, onMutateResult, context)
+      },
+    },
+    queryClient,
+  )
 }
 
 function bindMutation<TCommand, TVariables>(
@@ -76,6 +99,10 @@ export function invalidateWorkspaceQueries(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ['allTasks'] })
   void queryClient.invalidateQueries({ queryKey: ['checkpoints'] })
   void queryClient.invalidateQueries({ queryKey: ['studyLogs'] })
+  void queryClient.invalidateQueries({ queryKey: ['groupStudyLogs'] })
+  void queryClient.invalidateQueries({ queryKey: ['groupTaskStats'] })
+  void queryClient.invalidateQueries({ queryKey: ['workspaceInfo'] })
+  void queryClient.invalidateQueries({ queryKey: ['workspaceList'] })
   void queryClient.invalidateQueries({ queryKey: keys.audit })
 }
 
@@ -221,10 +248,10 @@ export function useMaterialMutations(planId: Id) {
     void queryClient.invalidateQueries({ queryKey: keys.materialUnits(materialId) })
 
   type MaterialCmd =
-    | { type: 'add'; input: { name: string; unitLabel: string; totalUnits: number } }
+    | { type: 'add'; input: { name: string; unitLabel: string; totalUnits: number; tags: string[] } }
     | {
         type: 'updateDetails'
-        input: { materialId: Id; name: string; unitLabel: string; totalUnits: number }
+        input: { materialId: Id; name: string; unitLabel: string; totalUnits: number; tags: string[] }
       }
     | { type: 'adjustProgress'; input: { materialId: Id; delta: number } }
     | { type: 'toggleUnit'; input: { unitId: Id; materialId: Id } }
@@ -235,13 +262,20 @@ export function useMaterialMutations(planId: Id) {
     mutationFn: async (cmd: MaterialCmd) => {
       switch (cmd.type) {
         case 'add':
-          await planService.addMaterial(planId, cmd.input.name, cmd.input.unitLabel, cmd.input.totalUnits)
+          await planService.addMaterial(
+            planId,
+            cmd.input.name,
+            cmd.input.unitLabel,
+            cmd.input.totalUnits,
+            cmd.input.tags,
+          )
           return { type: 'add' as const }
         case 'updateDetails':
           await planService.updateMaterialDetails(cmd.input.materialId, {
             name: cmd.input.name,
             unitLabel: cmd.input.unitLabel,
             totalUnits: cmd.input.totalUnits,
+            tags: cmd.input.tags,
           })
           return { type: 'updateDetails' as const, materialId: cmd.input.materialId }
         case 'adjustProgress':
@@ -268,15 +302,15 @@ export function useMaterialMutations(planId: Id) {
   })
 
   return {
-    add: bindMutation(mutation, (input: { name: string; unitLabel: string; totalUnits: number }) => ({
+    add: bindMutation(mutation, (input: { name: string; unitLabel: string; totalUnits: number; tags?: string[] }) => ({
       type: 'add' as const,
-      input,
+      input: { ...input, tags: input.tags ?? [] },
     })),
     updateDetails: bindMutation(
       mutation,
-      (input: { materialId: Id; name: string; unitLabel: string; totalUnits: number }) => ({
+      (input: { materialId: Id; name: string; unitLabel: string; totalUnits: number; tags?: string[] }) => ({
         type: 'updateDetails' as const,
-        input,
+        input: { ...input, tags: input.tags ?? [] },
       }),
     ),
     adjustProgress: bindMutation(
@@ -333,10 +367,27 @@ export function useScheduleMutations(planId: Id) {
 
 export function useTodayTasks(planId: Id | undefined, date: IsoDate) {
   const { taskService } = useServices()
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    if (!planId) return
+    let cancelled = false
+    void (async () => {
+      const tasks = await taskService.ensureTasksForDate(planId, date)
+      if (!cancelled) {
+        queryClient.setQueryData(keys.tasks(planId, date), tasks)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [date, planId, queryClient, taskService])
+
   return useQuery({
     queryKey: keys.tasks(planId ?? '', date),
-    queryFn: () => taskService.ensureTasksForDate(planId!, date),
+    queryFn: () => taskService.getTasksForDate(planId!, date),
     enabled: Boolean(planId),
+    staleTime: 60_000,
   })
 }
 
@@ -349,44 +400,143 @@ export function useAllTasks(planId: Id | undefined) {
   })
 }
 
-export function useTaskMutations(planId: Id, date: IsoDate) {
-  const { taskService } = useServices()
+type TaskCacheSnapshot = { prevToday?: Task[]; prevAll?: Task[] }
+
+function patchTaskList(
+  list: Task[] | undefined,
+  taskId: Id,
+  updater: (task: Task) => Task,
+): Task[] | undefined {
+  if (!list) return list
+  return list.map((task) => (task.id === taskId ? updater(task) : task))
+}
+
+function useTaskCache(planId: Id, date: IsoDate) {
   const queryClient = useQueryClient()
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: keys.tasks(planId, date) })
-    void queryClient.invalidateQueries({ queryKey: keys.allTasks(planId) })
+  const { clock } = useServices()
+  const todayKey = keys.tasks(planId, date)
+  const allKey = keys.allTasks(planId)
+
+  const snapshot = (): TaskCacheSnapshot => ({
+    prevToday: queryClient.getQueryData<Task[]>(todayKey),
+    prevAll: queryClient.getQueryData<Task[]>(allKey),
+  })
+
+  const cancelInFlight = () =>
+    Promise.all([
+      queryClient.cancelQueries({ queryKey: todayKey }),
+      queryClient.cancelQueries({ queryKey: allKey }),
+    ])
+
+  const restore = (ctx: TaskCacheSnapshot | undefined) => {
+    if (ctx?.prevToday !== undefined) queryClient.setQueryData(todayKey, ctx.prevToday)
+    if (ctx?.prevAll !== undefined) queryClient.setQueryData(allKey, ctx.prevAll)
+  }
+
+  const patch = (taskId: Id, updater: (task: Task) => Task) => {
+    queryClient.setQueryData<Task[]>(todayKey, (old) => patchTaskList(old, taskId, updater))
+    queryClient.setQueryData<Task[]>(allKey, (old) => patchTaskList(old, taskId, updater))
+  }
+
+  const syncStudyLogs = () => {
     void queryClient.invalidateQueries({ queryKey: ['studyLogs'] })
   }
 
-  const complete = useAppMutation({
+  return { cancelInFlight, clock, patch, restore, snapshot, syncStudyLogs }
+}
+
+export function useTaskMutations(planId: Id, date: IsoDate) {
+  const { taskService } = useServices()
+  const queryClient = useQueryClient()
+  const cache = useTaskCache(planId, date)
+  const todayKey = keys.tasks(planId, date)
+  const allKey = keys.allTasks(planId)
+
+  const complete = useAppMutation<void, Error, Id, TaskCacheSnapshot>({
     mutationFn: (taskId: Id) => taskService.completeTask(taskId),
-    onSuccess: invalidate,
+    onMutate: async (taskId) => {
+      await cache.cancelInFlight()
+      const ctx = cache.snapshot()
+      const stamp = cache.clock.stamp()
+      cache.patch(taskId, (task) => ({ ...task, status: 'done', completedAt: stamp }))
+      return ctx
+    },
+    onError: (_err, _taskId, ctx) => cache.restore(ctx),
+    onSuccess: () => {
+      cache.syncStudyLogs()
+    },
   })
 
-  const reopen = useAppMutation({
+  const reopen = useAppMutation<void, Error, Id, TaskCacheSnapshot>({
     mutationFn: (taskId: Id) => taskService.reopenTask(taskId),
-    onSuccess: invalidate,
+    onMutate: async (taskId) => {
+      await cache.cancelInFlight()
+      const ctx = cache.snapshot()
+      cache.patch(taskId, (task) => ({ ...task, status: 'open', completedAt: null }))
+      return ctx
+    },
+    onError: (_err, _taskId, ctx) => cache.restore(ctx),
+    onSuccess: () => {
+      cache.syncStudyLogs()
+    },
   })
 
-  const skip = useAppMutation({
+  const skip = useAppMutation<void, Error, Id, TaskCacheSnapshot>({
     mutationFn: (taskId: Id) => taskService.skipTask(taskId),
-    onSuccess: invalidate,
+    onMutate: async (taskId) => {
+      await cache.cancelInFlight()
+      const ctx = cache.snapshot()
+      cache.patch(taskId, (task) => ({
+        ...task,
+        status: 'skipped',
+        completedAt: null,
+      }))
+      return ctx
+    },
+    onError: (_err, _taskId, ctx) => cache.restore(ctx),
+    onSuccess: () => {
+      cache.syncStudyLogs()
+    },
   })
 
   const addAdhoc = useAppMutation({
     mutationFn: (title: string) => taskService.addAdhocTask(planId, date, title),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: todayKey })
+      void queryClient.invalidateQueries({ queryKey: allKey })
+    },
   })
 
-  const remove = useAppMutation({
+  const remove = useAppMutation<void, Error, Id, TaskCacheSnapshot>({
     mutationFn: (taskId: Id) => taskService.removeFromToday(taskId),
-    onSuccess: invalidate,
+    onMutate: async (taskId) => {
+      await cache.cancelInFlight()
+      const ctx = cache.snapshot()
+      const task = ctx.prevToday?.find((item) => item.id === taskId)
+      if (task?.scheduleItemId) {
+        cache.patch(taskId, (item) => ({ ...item, status: 'skipped', completedAt: null }))
+      } else {
+        queryClient.setQueryData<Task[]>(todayKey, (old) => old?.filter((item) => item.id !== taskId))
+        queryClient.setQueryData<Task[]>(allKey, (old) => old?.filter((item) => item.id !== taskId))
+      }
+      return ctx
+    },
+    onError: (_err, _taskId, ctx) => cache.restore(ctx),
+    onSuccess: () => {
+      cache.syncStudyLogs()
+    },
   })
 
-  const rename = useAppMutation({
+  const rename = useAppMutation<void, Error, { taskId: Id; title: string }, TaskCacheSnapshot>({
     mutationFn: (input: { taskId: Id; title: string }) =>
       taskService.renameAdhocTask(input.taskId, input.title),
-    onSuccess: invalidate,
+    onMutate: async ({ taskId, title }) => {
+      await cache.cancelInFlight()
+      const ctx = cache.snapshot()
+      cache.patch(taskId, (task) => ({ ...task, title: title.trim() }))
+      return ctx
+    },
+    onError: (_err, _input, ctx) => cache.restore(ctx),
   })
 
   return { complete, reopen, skip, addAdhoc, remove, rename }
@@ -441,6 +591,45 @@ export function useStudyLogs() {
   })
 }
 
+export function useGroupStudyLogs(planId: Id | undefined) {
+  const { studyLogService, cloudEnabled } = useServices()
+  return useQuery({
+    queryKey: ['groupStudyLogs', planId ?? ''],
+    queryFn: () => studyLogService.getAllForActivePlan(),
+    enabled: Boolean(planId),
+    refetchInterval: cloudEnabled ? 30_000 : false,
+  })
+}
+
+export function useGroupTaskStats(planId: Id | undefined) {
+  const { auth, clock, cloudEnabled } = useServices()
+  const today = clock.todayIso()
+  return useQuery({
+    queryKey: ['groupTaskStats', planId ?? '', today],
+    queryFn: () => auth!.getPlanMemberTaskStats(planId!, today),
+    enabled: Boolean(auth && planId),
+    refetchInterval: cloudEnabled ? 30_000 : false,
+  })
+}
+
+export function useWorkspaceInfo(workspaceId: Id | undefined) {
+  const { auth } = useServices()
+  return useQuery({
+    queryKey: ['workspaceInfo', workspaceId ?? ''],
+    queryFn: () => auth!.getWorkspaceInfo(workspaceId!),
+    enabled: Boolean(auth && workspaceId),
+  })
+}
+
+export function useWorkspaceList(userId: Id | undefined) {
+  const { auth } = useServices()
+  return useQuery({
+    queryKey: ['workspaceList', userId ?? ''],
+    queryFn: () => auth!.listUserWorkspaces(userId!),
+    enabled: Boolean(auth && userId),
+  })
+}
+
 export function useSetMinutesToday(planId: Id) {
   const { studyLogService, taskService } = useServices()
   const queryClient = useQueryClient()
@@ -483,8 +672,11 @@ export function useExportBackup(format: 'json' | 'excel' = 'json') {
     mutationKey: ['exportBackup', format],
     mutationFn: async () => {
       const backup = await backupService.export()
-      if (format === 'excel') downloadExcelBackup(backup)
+      if (format === 'excel') await downloadExcelBackup(backup)
       else downloadBackupFile(backup)
+    },
+    onSuccess: () => {
+      useToastStore.getState().show(i18n.t('settings.exportSuccess'), 'success')
     },
   })
 }
@@ -495,6 +687,7 @@ export function useImportBackup() {
   return useAppMutation({
     mutationFn: (backup: GanbaLogBackup) => backupService.import(backup),
     onSuccess: () => {
+      queueFlashToast('settings.importSuccess')
       queryClient.clear()
       window.location.reload()
     },
@@ -507,6 +700,7 @@ export function useImportExcelBackup() {
   return useAppMutation({
     mutationFn: (buffer: ArrayBuffer) => backupService.importFromExcel(buffer),
     onSuccess: () => {
+      queueFlashToast('settings.importSuccess')
       queryClient.clear()
       window.location.reload()
     },

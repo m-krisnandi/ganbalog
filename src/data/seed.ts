@@ -3,91 +3,47 @@ import type { Logger } from '../core/logging/logger'
 import type { PlanService } from '../domain/services/plan-service'
 import type { TaskService } from '../domain/services/task-service'
 import type { MetaRepository } from '../domain/repositories'
-import type { Weekday } from '../domain/models'
-import { isSupabaseEnabled } from './supabase/config'
+import { JLPT_N2_TEMPLATE, SEED_PLAN } from './study-templates'
 
-const SEED_FLAG_KEY = 'seeded.v1'
 const LOCALE_MIGRATION_KEY = 'seed.locale.en.v1'
-
-/** Teks seed dalam bahasa Inggris (netral untuk semua locale UI). */
-const SEED_PLAN = {
-  name: 'JLPT N2 — December 2026',
-  description:
-    '4-month prep (August–November). Months 1–2: bunpou, kanji & tango. Add dokkai/choukai from month 3. 継続は力なり!',
-  startDate: '2026-08-03',
-  targetDate: '2026-12-06',
-} as const
-
-const SEED_MATERIALS = [
-  { name: 'SKM Bunpou N2', unitLabel: 'chapters', totalUnits: 18 },
-  { name: 'SKM Dokkai N2', unitLabel: 'sections', totalUnits: 20 },
-  { name: 'SKM Choukai N2', unitLabel: 'sections', totalUnits: 15 },
-  { name: 'N2 Tango 3000', unitLabel: 'words', totalUnits: 3000 },
-  { name: 'Kanji Master N2', unitLabel: 'sections', totalUnits: 30 },
-  { name: 'Mock Test / 過去問', unitLabel: 'set', totalUnits: 4 },
-] as const
-
 const SCHEDULE_V2_MIGRATION_KEY = 'seed.schedule.v2'
+const SCHEDULE_V3_MIGRATION_KEY = 'seed.schedule.v3'
 
-/** Mingguan fase awal: bunpou + kanji + tango dulu. Choukai/Dokkai masuk setelah fondasi kuat. */
-const SEED_WEEKLY: Array<{ weekday: Weekday; title: string; materialIndex: number | null }> = [
-  { weekday: 1, title: 'SKM Bunpou — 1 chapter', materialIndex: 0 },
-  { weekday: 1, title: 'N2 Tango 3000 — 30 words', materialIndex: 3 },
-  { weekday: 2, title: 'Kanji Master — 1 section', materialIndex: 4 },
-  { weekday: 2, title: 'N2 Tango 3000 — 30 words', materialIndex: 3 },
-  { weekday: 3, title: 'SKM Bunpou — 1 chapter', materialIndex: 0 },
-  { weekday: 3, title: 'N2 Tango 3000 — 30 words', materialIndex: 3 },
-  { weekday: 4, title: 'Kanji Master — 1 section', materialIndex: 4 },
-  { weekday: 4, title: 'N2 Tango 3000 — 30 words', materialIndex: 3 },
-  { weekday: 5, title: 'SKM Bunpou — 1 chapter', materialIndex: 0 },
-  { weekday: 5, title: 'N2 Tango 3000 — 30 words', materialIndex: 3 },
-  { weekday: 6, title: 'Weekly review', materialIndex: null },
-]
-
-/** Jadwal lama — dipakai untuk migrasi plan yang sudah ter-seed. */
 const LEGACY_SCHEDULE_V1: Record<string, { title: string; materialIndex: number | null }> = {
   'Choukai — 1 section': { title: 'N2 Tango 3000 — 30 words', materialIndex: 3 },
-  'Dokkai — 2 passages': { title: 'Weekly review', materialIndex: null },
+  'Dokkai — 2 passages': { title: 'Weekly reflection', materialIndex: null },
 }
 
-const SEED_CHECKPOINTS = [
-  { title: 'Bunpou ch. 1–6, Tango ±750 words, Kanji ±25%', dueDate: '2026-08-31' },
-  { title: 'Bunpou ch. 7–12, Tango ±1500 words, Kanji ±50%', dueDate: '2026-09-30' },
-  { title: 'Bunpou & Kanji done, first mock test', dueDate: '2026-10-31' },
-  { title: 'Tango 3000 complete, 3+ mock tests above passing line', dueDate: '2026-11-30' },
-] as const
-
-/** Versi Indonesia lama — dipakai sekali untuk migrasi data yang sudah ter-seed. */
 const LEGACY_ID = {
   planName: 'JLPT N2 — Desember 2026',
-  planDescription: 'Persiapan 4 bulan (Agustus–November). 継続は力なり!',
-  unitLabels: { bab: 'chapters', bagian: 'sections', kata: 'words' } as const,
+  unitLabels: { bab: 'chapters', bagian: 'sections', kata: 'words', set: 'set' },
   scheduleTitles: {
     'SKM Bunpou — 1 bab': 'SKM Bunpou — 1 chapter',
-    'Tango 3000 — 30 kata': 'N2 Tango 3000 — 30 words',
+    'N2 Tango 3000 — 30 kata': 'N2 Tango 3000 — 30 words',
     'Kanji Master — 1 bagian': 'Kanji Master — 1 section',
     'Choukai — 1 bagian': 'Choukai — 1 section',
-    'Dokkai — 2 soal': 'Dokkai — 2 passages',
-    'Fukushū minggu ini': 'Weekly review',
-  } as const,
+    'Dokkai — 2 teks': 'Dokkai — 2 passages',
+    'Review mingguan': 'Weekly reflection',
+  },
   checkpointTitles: {
-    'Bunpou bab 1–6, Tango ±750 kata, Kanji ±25%': 'Bunpou ch. 1–6, Tango ±750 words, Kanji ±25%',
-    'Bunpou bab 7–12, Tango ±1500 kata, Kanji ±50%': 'Bunpou ch. 7–12, Tango ±1500 words, Kanji ±50%',
-    'Bunpou & Kanji SELESAI, mock test pertama': 'Bunpou & Kanji done, first mock test',
-    'Tango 3000 selesai, 3+ mock test di atas passing line':
-      'Tango 3000 complete, 3+ mock tests above passing line',
-  } as const,
-}
+    'Bulan 1 — Bunpou bab 1–6 + 600 tango': 'Month 1 — Bunpou ch. 1–6 + 600 vocab',
+    'Bulan 2 — Bunpou bab 7–12 + kanji setengah': 'Month 2 — Bunpou ch. 7–12 + kanji half',
+    'Bulan 3 — Mulai dokkai + mock test 1': 'Month 3 — Start dokkai + mock test 1',
+    'Bulan 4 — Mock penuh + review area lemah': 'Month 4 — Full mock + review weak areas',
+  },
+} as const
+
+export { createJlptN2TemplatePlan, createStudyTemplatePlan, SEED_PLAN } from './study-templates'
 
 /**
- * Seed satu kali: plan JLPT N2 sesuai draft jadwal 4 bulan,
- * lengkap dengan materi, jadwal mingguan, dan checkpoint per bulan.
+ * Migrasi data seed lama saja — tidak auto-buat plan baru.
+ * Plan pertama kali dibuat lewat onboarding wizard.
  */
 export async function seedIfNeeded(
   planService: PlanService,
   taskService: TaskService,
   meta: MetaRepository,
-  audit: AuditService,
+  _audit: AuditService,
   logger: Logger,
 ): Promise<void> {
   if (typeof meta?.get !== 'function' || typeof meta?.set !== 'function') {
@@ -98,44 +54,9 @@ export async function seedIfNeeded(
 
   await migrateLegacyIndonesianSeed(planService, taskService, meta, logger)
   await migrateSeedScheduleV2(planService, taskService, meta, logger)
-
-  const existingPlans = await planService.getPlans()
-  if (existingPlans.length > 0) return
-
-  const seeded = await meta.get(SEED_FLAG_KEY)
-  if (seeded && !isSupabaseEnabled()) return
-
-  logger.info('Seeding plan JLPT N2 pertama kali')
-
-  const plan = await planService.createPlan({
-    name: SEED_PLAN.name,
-    description: SEED_PLAN.description,
-    startDate: SEED_PLAN.startDate,
-    targetDate: SEED_PLAN.targetDate,
-  })
-
-  const materials = []
-  for (const item of SEED_MATERIALS) {
-    materials.push(
-      await planService.addMaterial(plan.id, item.name, item.unitLabel, item.totalUnits),
-    )
-  }
-
-  for (const item of SEED_WEEKLY) {
-    const materialId = item.materialIndex === null ? null : materials[item.materialIndex].id
-    await planService.addScheduleItem(plan.id, item.weekday, item.title, materialId)
-  }
-
-  for (const checkpoint of SEED_CHECKPOINTS) {
-    await planService.addCheckpoint(plan.id, checkpoint.title, checkpoint.dueDate)
-  }
-
-  await planService.setActivePlan(plan.id)
-  await meta.set(SEED_FLAG_KEY, new Date().toISOString())
-  audit.record('seed', 'plan', plan.id, plan.name)
+  await migrateSeedScheduleV3(planService, taskService, meta, logger)
 }
 
-/** Ubah data seed lama (bahasa Indonesia) ke Inggris untuk install yang sudah ada. */
 async function migrateLegacyIndonesianSeed(
   planService: PlanService,
   taskService: TaskService,
@@ -185,7 +106,6 @@ async function migrateLegacyIndonesianSeed(
   if (migrated) logger.info('Migrasi seed Indonesia → Inggris selesai')
 }
 
-/** Jadwal mingguan v2: hapus choukai/dokkai di awal, fokus fondasi dulu. */
 async function migrateSeedScheduleV2(
   planService: PlanService,
   taskService: TaskService,
@@ -198,7 +118,7 @@ async function migrateSeedScheduleV2(
   let migrated = false
 
   for (const plan of plans) {
-    if (plan.name !== SEED_PLAN.name) continue
+    if (plan.name !== JLPT_N2_TEMPLATE.plan.name) continue
 
     const materials = await planService.getMaterials(plan.id)
     const materialByIndex = (index: number) => materials[index]?.id ?? null
@@ -215,9 +135,9 @@ async function migrateSeedScheduleV2(
       })
     }
 
-    if (plan.description !== SEED_PLAN.description) {
+    if (plan.description !== JLPT_N2_TEMPLATE.plan.description) {
       migrated = true
-      await planService.updatePlan({ ...plan, description: SEED_PLAN.description })
+      await planService.updatePlan({ ...plan, description: JLPT_N2_TEMPLATE.plan.description })
     }
 
     const titleMap: Record<string, string> = {}
@@ -232,4 +152,63 @@ async function migrateSeedScheduleV2(
   await meta.set(SCHEDULE_V2_MIGRATION_KEY, new Date().toISOString())
   if (migrated) logger.info('Migrasi jadwal seed v2 (fondasi dulu) selesai')
   else logger.debug('Migrasi jadwal seed v2: tidak ada perubahan')
+}
+
+async function migrateSeedScheduleV3(
+  planService: PlanService,
+  taskService: TaskService,
+  meta: MetaRepository,
+  logger: Logger,
+): Promise<void> {
+  if (await meta.get(SCHEDULE_V3_MIGRATION_KEY)) return
+
+  const plans = await planService.getPlans()
+  let migrated = false
+  const titleMap: Record<string, string> = {
+    'Weekly review': 'Weekly reflection',
+    'Weekly review + weak areas': 'Weekly reflection + weak areas',
+    'Weekly review + wrong-answer log': 'Weekly reflection + wrong-answer log',
+    'Weekly review + vocab recycle': 'Weekly reflection + vocab recycle',
+  }
+
+  for (const plan of plans) {
+    const schedule = await planService.getSchedule(plan.id)
+
+    for (const item of schedule) {
+      const nextTitle = titleMap[item.title]
+      if (nextTitle) {
+        migrated = true
+        await planService.updateScheduleItem({ ...item, title: nextTitle })
+      }
+    }
+
+    const refreshed = await planService.getSchedule(plan.id)
+    const byWeekday = new Map<number, typeof refreshed>()
+    for (const item of refreshed) {
+      const bucket = byWeekday.get(item.weekday) ?? []
+      bucket.push(item)
+      byWeekday.set(item.weekday, bucket)
+    }
+
+    for (const items of byWeekday.values()) {
+      const seen = new Set<string>()
+      for (const item of items) {
+        const key = item.title.trim().toLowerCase()
+        if (seen.has(key)) {
+          migrated = true
+          await planService.deleteScheduleItem(item.id)
+        } else {
+          seen.add(key)
+        }
+      }
+    }
+
+    if (Object.keys(titleMap).length > 0) {
+      await taskService.remapTaskTitles(plan.id, titleMap)
+    }
+  }
+
+  await meta.set(SCHEDULE_V3_MIGRATION_KEY, new Date().toISOString())
+  if (migrated) logger.info('Migrasi jadwal seed v3 (weekly reflection + dedupe) selesai')
+  else logger.debug('Migrasi jadwal seed v3: tidak ada perubahan')
 }

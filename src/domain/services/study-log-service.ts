@@ -23,6 +23,12 @@ export class StudyLogService {
     return { userId: this.actor.userId, planId: plan.id }
   }
 
+  async getAllForActivePlan(): Promise<StudyLog[]> {
+    const plan = await this.plans.getActivePlan()
+    if (!plan) return []
+    return this.logs.getByPlan(plan.id)
+  }
+
   async getForActivePlan(): Promise<StudyLog[]> {
     const ctx = await this.scope()
     if (!ctx) return []

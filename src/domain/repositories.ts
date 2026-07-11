@@ -71,6 +71,7 @@ export interface CheckpointRepository {
 
 export interface StudyLogRepository {
   getByUserAndPlan(userId: Id, planId: Id): Promise<StudyLog[]>
+  getByPlan(planId: Id): Promise<StudyLog[]>
   getByUserPlanDate(userId: Id, planId: Id, date: IsoDate): Promise<StudyLog | undefined>
   save(log: StudyLog): Promise<void>
   deleteByUserPlanDate(userId: Id, planId: Id, date: IsoDate): Promise<void>
@@ -84,8 +85,11 @@ export interface UserPreferenceRepository {
 export interface WorkspaceRepository {
   getById(id: Id): Promise<Workspace | undefined>
   save(workspace: Workspace): Promise<void>
+  updateName(workspaceId: Id, name: string): Promise<void>
+  updateInviteCode(workspaceId: Id, inviteCode: string): Promise<void>
   getMembers(workspaceId: Id): Promise<WorkspaceMember[]>
   addMember(member: WorkspaceMember): Promise<void>
+  removeMember(workspaceId: Id, userId: Id): Promise<void>
 }
 
 export interface UserProfileRepository {

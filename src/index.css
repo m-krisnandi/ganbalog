@@ -8,11 +8,32 @@
     'Myanmar Sangam MN', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
     sans-serif;
 
-  /* Aksen tunggal: vermillion (merah Jepang) */
+  /* Brand — vermillion (Japanese study ritual) */
   --color-accent: #e0472f;
   --color-accent-strong: #c2371f;
   --color-accent-soft: #fdeae5;
   --color-accent-soft-dark: #3d1712;
+
+  /* Success — streak & completion */
+  --color-success: #059669;
+  --color-success-strong: #047857;
+  --color-success-soft: #ecfdf5;
+  --color-success-soft-dark: #052e22;
+
+  /* Warm surfaces */
+  --color-surface: #faf7f2;
+  --color-surface-raised: #ffffff;
+  --color-surface-muted: #f3efe8;
+  --color-surface-dark: #141210;
+  --color-surface-raised-dark: #1f1c18;
+  --color-surface-muted-dark: #2a2622;
+
+  --color-border-subtle: #ebe6dc;
+  --color-border-subtle-dark: #3a3530;
+
+  --shadow-soft: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px rgb(15 23 42 / 0.06);
+  --shadow-soft-lg: 0 8px 32px rgb(15 23 42 / 0.1);
+  --shadow-nav: 0 -4px 24px rgb(15 23 42 / 0.08);
 }
 
 @utility pb-safe {
@@ -24,16 +45,33 @@
 }
 
 html {
+  --nav-height: 5.25rem;
+  font-size: 16px;
   -webkit-tap-highlight-color: transparent;
   color-scheme: light;
+}
+
+html[data-text-size='large'] {
+  font-size: 18px;
+}
+
+html[data-contrast='high'] {
+  --color-border-subtle: #78716c;
+  --color-border-subtle-dark: #d6d3d1;
+}
+
+html[data-contrast='high'] body {
+  color: #0c0a09;
+}
+
+html.dark[data-contrast='high'] body {
+  color: #fafaf9;
 }
 
 html.dark {
   color-scheme: dark;
 }
 
-/* Tailwind v4 preflight set button cursor ke `default` — override di luar @layer
-   supaya menang di cascade. */
 button:not(:disabled),
 a,
 select:not(:disabled),
@@ -46,12 +84,55 @@ input[type='radio']:not(:disabled) {
   cursor: pointer !important;
 }
 
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent) 72%, white);
+  outline-offset: 3px;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+  button,
+  input,
+  select,
+  textarea,
+  [role='button'] {
+    min-height: 44px;
+  }
+}
+
 body {
-  @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  @apply bg-surface text-zinc-900 antialiased dark:bg-surface-dark dark:text-zinc-100;
   overscroll-behavior-y: none;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgb(224 71 47 / 0.06), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgb(5 150 105 / 0.04), transparent);
+}
+
+html.dark body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgb(224 71 47 / 0.1), transparent),
+    radial-gradient(ellipse 50% 40% at 0% 100%, rgb(217 119 6 / 0.06), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgb(5 150 105 / 0.07), transparent);
 }
 
 ::selection {
   background: var(--color-accent);
   color: white;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

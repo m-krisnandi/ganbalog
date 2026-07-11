@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
@@ -23,14 +23,54 @@ interface SheetProps {
  */
 export function Sheet({ open, title, onClose, children, toolbar, footer }: SheetProps) {
   const { t } = useTranslation()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  const titleId = useId()
+  closeRef.current = onClose
 
   useEffect(() => {
     if (!open) return
+    const previouslyFocused = document.activeElement as HTMLElement | null
     sheetOpened()
     document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeRef.current()
+        return
+      }
+      if (event.key !== 'Tab' || !panelRef.current) return
+
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) {
+        event.preventDefault()
+        panelRef.current.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+
+    const timer = window.setTimeout(() => {
+      panelRef.current?.querySelector<HTMLElement>('button, input, select, textarea')?.focus()
+    }, 80)
+
     return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('keydown', onKeyDown)
       sheetClosed()
       document.body.style.overflow = ''
+      previouslyFocused?.focus()
     }
   }, [open])
 
@@ -46,10 +86,12 @@ export function Sheet({ open, title, onClose, children, toolbar, footer }: Sheet
             onClick={onClose}
           />
           <motion.div
+            ref={panelRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
-            aria-label={title}
-            className="fixed inset-x-0 bottom-0 z-[101] mx-auto flex w-full max-w-lg max-h-[min(90dvh,100%)] flex-col rounded-t-[1.75rem] bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.12)] dark:bg-zinc-900"
+            aria-labelledby={titleId}
+            className="fixed inset-x-0 bottom-0 z-[101] mx-auto flex w-full max-w-lg max-h-[min(90dvh,100%)] flex-col rounded-t-[1.75rem] border border-border-subtle bg-surface-raised shadow-soft-lg dark:border-border-subtle-dark dark:bg-surface-raised-dark"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -60,7 +102,9 @@ export function Sheet({ open, title, onClose, children, toolbar, footer }: Sheet
             </div>
 
             <div className="shrink-0 flex items-center justify-between px-5 pb-3">
-              <h2 className="text-base font-semibold">{title}</h2>
+              <h2 id={titleId} className="text-base font-semibold">
+                {title}
+              </h2>
               <button
                 type="button"
                 onClick={onClose}

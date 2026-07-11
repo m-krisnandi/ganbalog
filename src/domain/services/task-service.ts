@@ -3,6 +3,7 @@ import type { AuditService } from '../../core/audit/audit-service'
 import type { Clock } from '../../core/clock'
 import type { IdGenerator } from '../../core/ids'
 import type { Logger } from '../../core/logging/logger'
+import type { MutableActorContext } from '../../core/session/actor-context'
 import type { Id, IsoDate, Task, Weekday } from '../models'
 import type { ScheduleRepository, TaskRepository } from '../repositories'
 import type { ReviewPolicy } from './review-scheduler'
@@ -24,6 +25,7 @@ export class TaskService {
     private readonly ids: IdGenerator,
     private readonly audit: AuditService,
     private readonly logger: Logger,
+    private readonly actor: MutableActorContext,
   ) {}
 
   /**
@@ -53,6 +55,7 @@ export class TaskService {
     const now = this.clock.stamp()
     const created: Task[] = missing.map((item) => ({
       id: this.ids.next(),
+      userId: this.actor.userId,
       planId,
       date,
       title: item.title,
@@ -80,15 +83,21 @@ export class TaskService {
     return this.tasks.getByPlan(planId)
   }
 
-  /** Remap judul task (mis. migrasi locale seed). Mendukung prefix 復習: pada task review. */
+  /** Remap judul task (mis. migrasi locale seed). Mendukung prefix review pada task review. */
   async remapTaskTitles(planId: Id, titleMap: Record<string, string>): Promise<void> {
     const tasks = await this.tasks.getByPlan(planId)
-    const reviewPrefix = '復習: '
+    const reviewPrefixes = ['Review: ', '復習: '] as const
     for (const task of tasks) {
       let next = titleMap[task.title]
-      if (!next && task.title.startsWith(reviewPrefix)) {
-        const mapped = titleMap[task.title.slice(reviewPrefix.length)]
-        if (mapped) next = `${reviewPrefix}${mapped}`
+      if (!next) {
+        for (const prefix of reviewPrefixes) {
+          if (!task.title.startsWith(prefix)) continue
+          const mapped = titleMap[task.title.slice(prefix.length)]
+          if (mapped) {
+            next = `${prefix}${mapped}`
+            break
+          }
+        }
       }
       if (next) await this.tasks.save({ ...task, title: next })
     }
@@ -111,7 +120,15 @@ export class TaskService {
 
   async reopenTask(taskId: Id): Promise<void> {
     const task = await this.tasks.getById(taskId)
-    if (!task || task.status !== 'done') return
+    if (!task) return
+
+    if (task.status === 'skipped') {
+      await this.tasks.save({ ...task, status: 'open', completedAt: null })
+      this.audit.record('reopen', 'task', taskId, task.title)
+      return
+    }
+
+    if (task.status !== 'done') return
     await this.tasks.save({ ...task, status: 'open', completedAt: null })
     await this.removeOpenReviewsOf(taskId)
     this.audit.record('reopen', 'task', taskId, task.title)
@@ -139,6 +156,7 @@ export class TaskService {
   async addAdhocTask(planId: Id, date: IsoDate, title: string): Promise<Task> {
     const task: Task = {
       id: this.ids.next(),
+      userId: this.actor.userId,
       planId,
       date,
       title,
@@ -210,9 +228,10 @@ export class TaskService {
       .reviewDates(sourceTask.date)
       .map((date) => ({
         id: this.ids.next(),
+        userId: this.actor.userId,
         planId: sourceTask.planId,
         date,
-        title: `復習: ${sourceTask.title}`,
+        title: `Review: ${sourceTask.title}`,
         kind: 'review' as const,
         status: 'open' as const,
         materialId: sourceTask.materialId,
@@ -227,7 +246,7 @@ export class TaskService {
       'create',
       'task',
       sourceTask.id,
-      `復習 +3/+7/+21: ${sourceTask.title}`,
+      `Review +3/+7/+21: ${sourceTask.title}`,
     )
   }
 
