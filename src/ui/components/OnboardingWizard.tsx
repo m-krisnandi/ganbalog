@@ -20,7 +20,7 @@ import type { StudyTemplateId } from '../../data/study-templates'
 import { createStudyTemplatePlan } from '../../data/study-templates'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button, TextInput } from './primitives'
-import { DatePicker } from './DatePicker'
+import { DateRangeFields } from './DatePicker'
 import { SamplePlanPicker, TemplateSummary } from './SamplePlanPicker'
 
 const STEPS = ['welcome', 'how', 'plan', 'done'] as const
@@ -285,16 +285,14 @@ export function OnboardingWizard() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
-                <div className="flex gap-3">
-                  <label className="flex-1 space-y-1">
-                    <span className="px-1 text-xs text-zinc-500">{t('settings.start')}</span>
-                    <DatePicker value={startDate} onChange={setStartDate} />
-                  </label>
-                  <label className="flex-1 space-y-1">
-                    <span className="px-1 text-xs text-zinc-500">{t('settings.targetDate')}</span>
-                    <DatePicker value={targetDate} onChange={setTargetDate} />
-                  </label>
-                </div>
+                <DateRangeFields
+                  startDate={startDate}
+                  targetDate={targetDate}
+                  onStartDateChange={setStartDate}
+                  onTargetDateChange={setTargetDate}
+                  startLabel={t('settings.start')}
+                  targetLabel={t('settings.targetDate')}
+                />
                 <div className="flex gap-3 pt-2">
                   <Button variant="ghost" type="button" className="flex-1" onClick={() => goToStep('how')}>
                     {t('common.back')}

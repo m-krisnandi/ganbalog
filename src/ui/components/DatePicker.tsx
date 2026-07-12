@@ -23,20 +23,29 @@ import { useServices } from '../../core/di/ServicesProvider'
 interface DatePickerProps {
   value: IsoDate | ''
   onChange: (value: IsoDate | '') => void
+  /** Controlled open state — use to keep only one calendar open in a pair. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function DatePicker({ value, onChange }: DatePickerProps) {
+export function DatePicker({ value, onChange, open: openProp, onOpenChange }: DatePickerProps) {
   const { t, i18n } = useTranslation()
   const { clock } = useServices()
   const locale = dateLocale(i18n.language)
 
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const controlled = openProp !== undefined
+  const open = controlled ? openProp : uncontrolledOpen
+
+  const setOpen = (next: boolean) => {
+    if (!controlled) setUncontrolledOpen(next)
+    onOpenChange?.(next)
+  }
+
   const todayIso = clock.todayIso()
   const today = useMemo(() => parseISO(todayIso), [todayIso])
 
-  const [viewMonth, setViewMonth] = useState(() =>
-    value ? parseISO(value) : today,
-  )
+  const [viewMonth, setViewMonth] = useState(() => (value ? parseISO(value) : today))
 
   useEffect(() => {
     if (value) setViewMonth(parseISO(value))
@@ -67,16 +76,18 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
     <div className="space-y-2">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className={`flex w-full items-center justify-between gap-3 rounded-xl border bg-white px-3.5 py-2.5 text-left text-sm transition-colors dark:bg-zinc-800 ${
+        className={`flex w-full items-center justify-between gap-3 rounded-xl border bg-white px-3.5 py-2.5 text-left text-base transition-colors dark:bg-zinc-800 ${
           open
             ? 'border-accent ring-2 ring-accent/20'
             : 'border-zinc-200 dark:border-zinc-700'
         }`}
       >
-        <span className={value ? 'font-medium' : 'text-zinc-400'}>{display}</span>
+        <span className={`min-w-0 truncate ${value ? 'font-medium' : 'text-zinc-400'}`}>
+          {display}
+        </span>
         <Calendar size={18} className="shrink-0 text-zinc-400" aria-hidden />
       </button>
 
@@ -92,9 +103,9 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
             <div
               role="dialog"
               aria-label={t('datePicker.placeholder')}
-              className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800/80"
+              className="rounded-2xl border border-zinc-200 bg-zinc-50 p-2.5 sm:p-3 dark:border-zinc-700 dark:bg-zinc-800/80"
             >
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between sm:mb-3">
                 <button
                   type="button"
                   onClick={() => setViewMonth((m) => subMonths(m, 1))}
@@ -116,10 +127,10 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                 </button>
               </div>
 
-              <div className="grid grid-cols-7 gap-1 text-center">
-                {weekdayLabels.map((label) => (
+              <div className="grid grid-cols-7 gap-0.5 text-center sm:gap-1">
+                {weekdayLabels.map((label, index) => (
                   <span
-                    key={label}
+                    key={`${label}-${index}`}
                     className="py-1 text-[10px] font-semibold tracking-wide text-zinc-400 uppercase"
                   >
                     {label}
@@ -138,7 +149,7 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                       onClick={() => pick(iso)}
                       aria-label={format(day, 'd MMMM yyyy', { locale })}
                       aria-pressed={selected}
-                      className={`relative flex size-9 items-center justify-center rounded-full text-sm transition-colors ${
+                      className={`relative mx-auto flex aspect-square w-full max-w-9 items-center justify-center rounded-full text-sm transition-colors ${
                         selected
                           ? 'bg-accent font-semibold text-white'
                           : inMonth
@@ -152,7 +163,7 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                 })}
               </div>
 
-              <div className="mt-3 flex gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+              <div className="mt-2.5 flex gap-2 border-t border-zinc-200 pt-2.5 sm:mt-3 sm:pt-3 dark:border-zinc-700">
                 <button
                   type="button"
                   onClick={() => {
@@ -179,6 +190,48 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+/** Start + target date pair: stacked on mobile, only one calendar open at a time. */
+export function DateRangeFields({
+  startDate,
+  targetDate,
+  onStartDateChange,
+  onTargetDateChange,
+  startLabel,
+  targetLabel,
+}: {
+  startDate: IsoDate | ''
+  targetDate: IsoDate | ''
+  onStartDateChange: (value: IsoDate | '') => void
+  onTargetDateChange: (value: IsoDate | '') => void
+  startLabel: string
+  targetLabel: string
+}) {
+  const [openField, setOpenField] = useState<'start' | 'target' | null>(null)
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:gap-3">
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="px-1 text-xs text-zinc-400">{startLabel}</p>
+        <DatePicker
+          value={startDate}
+          onChange={onStartDateChange}
+          open={openField === 'start'}
+          onOpenChange={(next) => setOpenField(next ? 'start' : null)}
+        />
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="px-1 text-xs text-zinc-400">{targetLabel}</p>
+        <DatePicker
+          value={targetDate}
+          onChange={onTargetDateChange}
+          open={openField === 'target'}
+          onOpenChange={(next) => setOpenField(next ? 'target' : null)}
+        />
+      </div>
     </div>
   )
 }

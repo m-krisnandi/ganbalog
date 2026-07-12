@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import type { AiPlanIntensity } from '../../data/generate-plan-ai'
 import type { Weekday } from '../../domain/models'
 import { Button, TextArea, TextInput } from './primitives'
-import { DatePicker } from './DatePicker'
+import { DateRangeFields } from './DatePicker'
 
 const ALL_WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7]
 const INTENSITIES: AiPlanIntensity[] = ['light', 'standard', 'intense']
@@ -88,16 +88,14 @@ export function AiPlanForm({
         disabled={submitting}
       />
 
-      <div className="flex gap-3">
-        <label className="flex-1 space-y-1">
-          <span className="px-1 text-xs text-zinc-400">{t('settings.start')}</span>
-          <DatePicker value={startDate} onChange={onStartDateChange} />
-        </label>
-        <label className="flex-1 space-y-1">
-          <span className="px-1 text-xs text-zinc-400">{t('settings.targetDate')}</span>
-          <DatePicker value={targetDate} onChange={onTargetDateChange} />
-        </label>
-      </div>
+      <DateRangeFields
+        startDate={startDate}
+        targetDate={targetDate}
+        onStartDateChange={onStartDateChange}
+        onTargetDateChange={onTargetDateChange}
+        startLabel={t('settings.start')}
+        targetLabel={t('settings.targetDate')}
+      />
 
       <div className="space-y-1.5">
         <p className="px-1 text-xs text-zinc-400">{t('plan.aiStudyDays')}</p>

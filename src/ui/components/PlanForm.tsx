@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Button, TextInput } from './primitives'
-import { DatePicker } from './DatePicker'
+import { DateRangeFields } from './DatePicker'
 
 export function PlanForm({
   name,
@@ -50,16 +50,14 @@ export function PlanForm({
         value={description}
         onChange={(e) => onDescriptionChange(e.target.value)}
       />
-      <div className="flex gap-3">
-        <label className="flex-1 space-y-1">
-          <span className="px-1 text-xs text-zinc-400">{t('settings.start')}</span>
-          <DatePicker value={startDate} onChange={onStartDateChange} />
-        </label>
-        <label className="flex-1 space-y-1">
-          <span className="px-1 text-xs text-zinc-400">{t('settings.targetDate')}</span>
-          <DatePicker value={targetDate} onChange={onTargetDateChange} />
-        </label>
-      </div>
+      <DateRangeFields
+        startDate={startDate}
+        targetDate={targetDate}
+        onStartDateChange={onStartDateChange}
+        onTargetDateChange={onTargetDateChange}
+        startLabel={t('settings.start')}
+        targetLabel={t('settings.targetDate')}
+      />
       {onCancel ? (
         <div className="flex gap-3">
           <Button type="button" variant="ghost" className="flex-1" onClick={onCancel}>
