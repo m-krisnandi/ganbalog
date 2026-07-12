@@ -184,7 +184,7 @@ export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full rounded-xl border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-inset focus:ring-accent/25 dark:border-border-subtle-dark dark:bg-surface-muted-dark ${props.className ?? ''}`}
+      className={`w-full rounded-xl border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-base outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-inset focus:ring-accent/25 dark:border-border-subtle-dark dark:bg-surface-muted-dark ${props.className ?? ''}`}
     />
   )
 }
@@ -194,7 +194,7 @@ export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
     <textarea
       rows={3}
       {...props}
-      className={`w-full resize-y rounded-xl border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-inset focus:ring-accent/25 dark:border-border-subtle-dark dark:bg-surface-muted-dark ${props.className ?? ''}`}
+      className={`w-full resize-y rounded-xl border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-base leading-relaxed outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-inset focus:ring-accent/25 dark:border-border-subtle-dark dark:bg-surface-muted-dark ${props.className ?? ''}`}
     />
   )
 }
