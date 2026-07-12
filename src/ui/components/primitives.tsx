@@ -1,5 +1,10 @@
 import type { LucideIcon } from 'lucide-react'
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from 'react'
 
 const surfaceBorder =
   'border border-border-subtle dark:border-border-subtle-dark'
@@ -9,14 +14,18 @@ export function PageHeader({
   subtitle,
   trailing,
   children,
+  onClick,
+  actionLabel,
 }: {
   title: ReactNode
   subtitle?: ReactNode
   trailing?: ReactNode
   children?: ReactNode
+  onClick?: () => void
+  actionLabel?: string
 }) {
-  return (
-    <header className={`rounded-xl ${surfaceBorder} bg-surface-raised/80 px-4 py-3.5 dark:bg-surface-raised-dark/80`}>
+  const body = (
+    <>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold leading-tight">{title}</h1>
@@ -27,6 +36,25 @@ export function PageHeader({
         {trailing}
       </div>
       {children}
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={actionLabel}
+        className={`w-full rounded-xl ${surfaceBorder} bg-surface-raised/80 px-4 py-3.5 text-left transition-colors hover:bg-surface-muted/80 dark:bg-surface-raised-dark/80 dark:hover:bg-surface-muted-dark/80`}
+      >
+        {body}
+      </button>
+    )
+  }
+
+  return (
+    <header className={`rounded-xl ${surfaceBorder} bg-surface-raised/80 px-4 py-3.5 dark:bg-surface-raised-dark/80`}>
+      {body}
     </header>
   )
 }
@@ -156,7 +184,17 @@ export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full rounded-xl border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-border-subtle-dark dark:bg-surface-muted-dark ${props.className ?? ''}`}
+      className={`w-full rounded-xl border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-inset focus:ring-accent/25 dark:border-border-subtle-dark dark:bg-surface-muted-dark ${props.className ?? ''}`}
+    />
+  )
+}
+
+export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      rows={3}
+      {...props}
+      className={`w-full resize-y rounded-xl border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-inset focus:ring-accent/25 dark:border-border-subtle-dark dark:bg-surface-muted-dark ${props.className ?? ''}`}
     />
   )
 }

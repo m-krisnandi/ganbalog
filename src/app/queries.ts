@@ -15,6 +15,7 @@ import { useEffect } from 'react'
 import { useServices } from '../core/di/ServicesProvider'
 import { downloadBackupFile, type GanbaLogBackup } from '../data/backup'
 import { downloadExcelBackup } from '../data/export-excel'
+import { isSupabaseUuid } from '../data/supabase/ids'
 import { queueFlashToast } from './flash-toast'
 import type { Checkpoint, Id, IsoDate, ScheduleItem, Task, Weekday } from '../domain/models'
 import { useToastStore } from './toast-store'
@@ -109,15 +110,23 @@ export function invalidateWorkspaceQueries(queryClient: QueryClient): void {
 /* ------------------------------- Plan -------------------------------- */
 
 export function usePlans() {
-  const { planService } = useServices()
-  return useQuery({ queryKey: keys.plans, queryFn: () => planService.getPlans() })
+  const { planService, cloudEnabled, actor } = useServices()
+  const ready = !cloudEnabled || isSupabaseUuid(actor.workspaceId)
+  return useQuery({
+    queryKey: [...keys.plans, actor.workspaceId],
+    queryFn: () => planService.getPlans(),
+    enabled: ready,
+  })
 }
 
 export function useActivePlan() {
-  const { planService } = useServices()
+  const { planService, cloudEnabled, actor } = useServices()
+  const ready =
+    !cloudEnabled || (isSupabaseUuid(actor.userId) && isSupabaseUuid(actor.workspaceId))
   return useQuery({
-    queryKey: keys.activePlan,
+    queryKey: [...keys.activePlan, actor.userId, actor.workspaceId],
     queryFn: async () => (await planService.getActivePlan()) ?? null,
+    enabled: ready,
   })
 }
 

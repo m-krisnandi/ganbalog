@@ -1,6 +1,7 @@
 -- Fix workspace_members RLS: user boleh insert membership untuk diri sendiri
 drop policy if exists members_select on workspace_members;
 drop policy if exists members_insert on workspace_members;
+drop policy if exists members_update on workspace_members;
 
 create policy members_select on workspace_members for select
   using (

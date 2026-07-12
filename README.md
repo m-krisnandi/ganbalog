@@ -78,22 +78,44 @@ Tanpa env Supabase, app berjalan **local-first** (IndexedDB).
 #### Setup cloud (grup belajar)
 
 1. Buat project Supabase.
-2. Jalankan migration berurutan: **`001` → `003` → `004` → `005` → `006` → `007`**
-   - **Jangan jalankan `002`** — sudah digantikan oleh `004`.
+2. Apply schema dengan **Supabase CLI** (bukan SQL Editor manual):
+   ```bash
+   npm run db:login
+   npm run db:link    # pilih project xnlyyzizpphpfidfxbvb (atau project baru)
+   npm run db:push    # jalankan semua migration di supabase/migrations/
+   npm run db:status  # cek remote vs local
+   ```
+   Butuh **Database password** (Settings → Database). Install CLI: `brew install supabase/tap/supabase`.
 3. Aktifkan **Google OAuth** + redirect URL production & dev.
-4. Salin `.env.example` → `.env`, isi `VITE_SUPABASE_*`.
+4. Salin `.env.example` → `.env`, isi `VITE_SUPABASE_*` (dan set yang sama di Vercel).
 5. `npm run dev` → login → **Settings → Account** untuk workspace.
 
-Migration **007**: `plans.source_template_id`, `materials.tags`.
+Migration berikutnya: tambah file `supabase/migrations/YYYYMMDDHHmmss_nama.sql`, lalu `npm run db:push` (atau push ke `main`/`develop` supaya GitHub Action yang push).
+
+> Jangan auto-migrate dari browser/app — butuh privilege DB. CLI / CI saja.
 
 ## Deploy
 
 Static build — deploy `dist/` ke Vercel/Cloudflare Pages/Netlify.
 Jalankan `npm run build` sebelum deploy.
 
+### Create with AI (OpenAI)
+
+Butuh login Google. API key **hanya** di server (Vercel env), bukan `VITE_*`:
+
+1. Vercel → Project → Settings → Environment Variables:
+   - `OPENAI_API_KEY`
+   - `SUPABASE_URL` (sama dengan `VITE_SUPABASE_URL`)
+   - `SUPABASE_PUBLISHABLE_KEY` (sama dengan publishable/anon key)
+2. Redeploy (`vercel --prod`).
+3. Di app: Plan hub → **Create with AI** (goal, tanggal, hari belajar, intensitas).
+
+Lokal: `vercel dev` (bukan hanya `npm run dev`) supaya `/api/generate-plan` tersedia.
+
 ## Checklist sebelum publish (cloud)
 
-- [ ] Migration **001, 003–007** di Supabase (skip 002)
+- [ ] `npm run db:push` (migration terbaru di remote)
+- [ ] Env OpenAI + Supabase di Vercel (untuk Create with AI)
 - [ ] Google OAuth redirect URL production
 - [ ] `npm run lint && npm test && npm run build` lulus
 - [ ] Tes join grup + progress realtime

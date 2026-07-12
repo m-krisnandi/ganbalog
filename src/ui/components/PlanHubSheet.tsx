@@ -11,19 +11,27 @@ import {
   Pencil,
   Plus,
   Sparkles,
+  WandSparkles,
 } from 'lucide-react'
-import type { Plan } from '../../domain/models'
+import type { Plan, Weekday } from '../../domain/models'
 import type { StudyTemplateId } from '../../data/study-templates'
 import { createStudyTemplatePlan } from '../../data/study-templates'
 import {
   downloadPlanTemplateFile,
   exportPlanTemplate,
+  importPlanTemplate,
   PlanTemplateError,
 } from '../../data/plan-template'
+import {
+  generatePlanWithAi,
+  GeneratePlanAiError,
+  type AiPlanIntensity,
+} from '../../data/generate-plan-ai'
 import { copyPlanShareLink } from '../../data/plan-share-url'
 import { dateLocale } from '../../app/i18n'
 import { defaultNewPlanDates } from '../../core/plan-dates'
 import { useServices } from '../../core/di/ServicesProvider'
+import { useAuth } from '../../app/auth/AuthProvider'
 import {
   invalidateWorkspaceQueries,
   useActivePlan,
@@ -34,10 +42,13 @@ import { useToastStore } from '../../app/toast-store'
 import { dismissNavCoach } from '../lib/nav-coach'
 import { Button } from './primitives'
 import { PlanForm } from './PlanForm'
+import { AiPlanForm } from './AiPlanForm'
 import { Sheet } from './Sheet'
 import { TemplateGrid, TemplateSummary } from './SamplePlanPicker'
 
-type HubView = 'list' | 'create' | 'samples' | 'manage'
+type HubView = 'list' | 'create' | 'createAi' | 'samples' | 'manage'
+
+const DEFAULT_AI_WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5]
 
 export function PlanHubSheet({
   open,
@@ -53,6 +64,7 @@ export function PlanHubSheet({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { clock, planService, audit } = useServices()
+  const { session, signInWithGoogle } = useAuth()
   const { data: plans = [] } = usePlans()
   const { data: activePlan } = useActivePlan()
   const { create, updateDetails, archive, setActive } = usePlanMutations()
@@ -64,6 +76,9 @@ export function PlanHubSheet({
   const [targetDate, setTargetDate] = useState('')
   const [templateId, setTemplateId] = useState<StudyTemplateId>('jlpt-n2')
   const [submittingSample, setSubmittingSample] = useState(false)
+  const [submittingAi, setSubmittingAi] = useState(false)
+  const [aiWeekdays, setAiWeekdays] = useState<Weekday[]>(DEFAULT_AI_WEEKDAYS)
+  const [aiIntensity, setAiIntensity] = useState<AiPlanIntensity>('standard')
   const [exporting, setExporting] = useState(false)
   const [copyingLink, setCopyingLink] = useState(false)
 
@@ -74,6 +89,8 @@ export function PlanHubSheet({
     setDescription('')
     setStartDate('')
     setTargetDate('')
+    setAiWeekdays(DEFAULT_AI_WEEKDAYS)
+    setAiIntensity('standard')
   }, [])
 
   const openCreate = useCallback(() => {
@@ -83,6 +100,17 @@ export function PlanHubSheet({
     setStartDate(dates.startDate)
     setTargetDate(dates.targetDate)
     setView('create')
+  }, [clock])
+
+  const openCreateAi = useCallback(() => {
+    const dates = defaultNewPlanDates(clock.todayIso())
+    setName('')
+    setDescription('')
+    setStartDate(dates.startDate)
+    setTargetDate(dates.targetDate)
+    setAiWeekdays(DEFAULT_AI_WEEKDAYS)
+    setAiIntensity('standard')
+    setView('createAi')
   }, [clock])
 
   const openManage = useCallback(() => {
@@ -96,7 +124,7 @@ export function PlanHubSheet({
 
   useEffect(() => {
     if (!open) return
-    setView(initialView)
+    setView(initialView === 'createAi' ? 'createAi' : initialView)
   }, [open, initialView])
 
   const handleClose = () => {
@@ -148,14 +176,59 @@ export function PlanHubSheet({
     }
   }
 
+  const createAiPlan = async () => {
+    const goal = name.trim()
+    if (!goal || !startDate || !targetDate || targetDate < startDate || aiWeekdays.length === 0) {
+      return
+    }
+    if (submittingAi) return
+    setSubmittingAi(true)
+    try {
+      const payload = await generatePlanWithAi({
+        goal,
+        description: description.trim(),
+        startDate,
+        targetDate,
+        weekdays: aiWeekdays,
+        intensity: aiIntensity,
+        locale: i18n.language,
+      })
+      await importPlanTemplate(planService, audit, payload, { activate: true })
+      dismissNavCoach()
+      invalidateWorkspaceQueries(queryClient)
+      useToastStore.getState().show(t('plan.aiCreated'), 'success')
+      handleClose()
+    } catch (error) {
+      if (error instanceof GeneratePlanAiError) {
+        const key =
+          error.code === 'unauthorized'
+            ? 'plan.aiSignInRequired'
+            : error.code === 'openai_not_configured'
+              ? 'plan.aiNotConfigured'
+              : error.code === 'api_unavailable'
+                ? 'plan.aiApiUnavailable'
+                : 'plan.aiFailed'
+        useToastStore.getState().show(t(key), 'error')
+      } else if (error instanceof PlanTemplateError) {
+        useToastStore.getState().show(t('settings.importPlanTemplateFailed'), 'error')
+      } else {
+        useToastStore.getState().show(t('plan.aiFailed'), 'error')
+      }
+    } finally {
+      setSubmittingAi(false)
+    }
+  }
+
   const title =
     view === 'create'
       ? t('plan.newPlan')
-      : view === 'samples'
-        ? t('settings.samplePlans')
-        : view === 'manage'
-          ? t('plan.managePlan')
-          : t('plan.switchPlan')
+      : view === 'createAi'
+        ? t('plan.createWithAi')
+        : view === 'samples'
+          ? t('settings.samplePlans')
+          : view === 'manage'
+            ? t('plan.managePlan')
+            : t('plan.switchPlan')
 
   return (
     <Sheet
@@ -198,7 +271,11 @@ export function PlanHubSheet({
                     <p className="truncate text-sm font-medium">{plan.name}</p>
                     <p className="mt-0.5 text-xs text-zinc-400">
                       {format(parseISO(plan.targetDate), 'd MMM yyyy', { locale })}
-                      {plan.sourceTemplateId ? ` · ${t('settings.fromSample')}` : ''}
+                      {plan.sourceTemplateId === 'ai'
+                        ? ` · ${t('plan.fromAi')}`
+                        : plan.sourceTemplateId
+                          ? ` · ${t('settings.fromSample')}`
+                          : ''}
                     </p>
                   </div>
                   {isActive && (
@@ -223,6 +300,10 @@ export function PlanHubSheet({
               <Sparkles size={16} /> {t('plan.fromSample')}
             </Button>
           </div>
+
+          <Button variant="ghost" className="w-full justify-center gap-1.5" onClick={openCreateAi}>
+            <WandSparkles size={16} /> {t('plan.createWithAi')}
+          </Button>
 
           {activePlan && (
             <button
@@ -249,26 +330,58 @@ export function PlanHubSheet({
       )}
 
       {view === 'create' && (
-        <PlanForm
-          autoFocus
-          name={name}
+        <div className="space-y-3 pb-2">
+          <PlanForm
+            autoFocus
+            name={name}
+            description={description}
+            startDate={startDate}
+            targetDate={targetDate}
+            onNameChange={setName}
+            onDescriptionChange={setDescription}
+            onStartDateChange={setStartDate}
+            onTargetDateChange={setTargetDate}
+            submitLabel={t('settings.create')}
+            onCancel={() => setView('list')}
+            onSubmit={() => {
+              const trimmed = name.trim()
+              if (!trimmed || !startDate || !targetDate || targetDate < startDate) return
+              create.mutate(
+                { name: trimmed, description: description.trim(), startDate, targetDate },
+                { onSuccess: handleClose },
+              )
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setView('createAi')}
+            className="flex w-full items-center justify-center gap-2 text-sm font-medium text-accent"
+          >
+            <WandSparkles size={15} />
+            {t('plan.createWithAiInstead')}
+          </button>
+        </div>
+      )}
+
+      {view === 'createAi' && (
+        <AiPlanForm
+          goal={name}
           description={description}
           startDate={startDate}
           targetDate={targetDate}
-          onNameChange={setName}
+          weekdays={aiWeekdays}
+          intensity={aiIntensity}
+          submitting={submittingAi}
+          signedIn={Boolean(session)}
+          onGoalChange={setName}
           onDescriptionChange={setDescription}
           onStartDateChange={setStartDate}
           onTargetDateChange={setTargetDate}
-          submitLabel={t('settings.create')}
+          onWeekdaysChange={setAiWeekdays}
+          onIntensityChange={setAiIntensity}
+          onSubmit={() => void createAiPlan()}
           onCancel={() => setView('list')}
-          onSubmit={() => {
-            const trimmed = name.trim()
-            if (!trimmed || !startDate || !targetDate || targetDate < startDate) return
-            create.mutate(
-              { name: trimmed, description: description.trim(), startDate, targetDate },
-              { onSuccess: handleClose },
-            )
-          }}
+          onSignIn={() => void signInWithGoogle()}
         />
       )}
 

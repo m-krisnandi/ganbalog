@@ -51,7 +51,7 @@ const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5]
 const WEEKEND: Weekday[] = [6, 7]
 
 type PlanSegment = 'schedule' | 'materials' | 'milestones'
-type HubView = 'list' | 'create' | 'samples' | 'manage'
+type HubView = 'list' | 'create' | 'createAi' | 'samples' | 'manage'
 
 function normalizeSegment(value: string | null): PlanSegment | null {
   if (value === 'materials' || value === 'milestones' || value === 'schedule') return value
@@ -155,21 +155,19 @@ export function PlanPage() {
   return (
     <div className="space-y-5 pt-4">
       <PageHeader
+        onClick={() => setSwitcherOpen(true)}
+        actionLabel={t('plan.openPlanHub')}
         title={
-          <button
-            type="button"
-            onClick={() => setSwitcherOpen(true)}
-            className="flex w-full items-center gap-2 text-left"
-            aria-label={t('plan.switchPlan')}
-          >
+          <span className="flex w-full items-center gap-2">
             <span className="min-w-0 flex-1 truncate">{plan.name}</span>
             <ChevronsUpDown size={18} className="shrink-0 text-zinc-400" aria-hidden />
-          </button>
+          </span>
         }
         subtitle={
           <>
             {format(parseISO(plan.startDate), 'd MMM yyyy', { locale })} →{' '}
             {format(parseISO(plan.targetDate), 'd MMM yyyy', { locale })}
+            <span className="mt-0.5 block text-xs text-zinc-400">{t('plan.openPlanHubHint')}</span>
           </>
         }
       />
@@ -758,20 +756,26 @@ function MaterialsSection({
               onChange={(e) => setName(e.target.value)}
             />
             <div className="flex gap-3">
-              <TextInput
-                placeholder={t('plan.unitPlaceholder')}
-                value={unitLabel}
-                onChange={(e) => setUnitLabel(e.target.value)}
-                aria-label={t('plan.unit')}
-              />
-              <TextInput
-                type="number"
-                min={1}
-                placeholder={t('plan.totalPlaceholder')}
-                value={totalUnits}
-                onChange={(e) => setTotalUnits(e.target.value)}
-                aria-label={t('plan.total')}
-              />
+              <label className="w-[32%] shrink-0 space-y-1">
+                <span className="px-1 text-xs text-zinc-400">{t('plan.total')}</span>
+                <TextInput
+                  type="number"
+                  min={1}
+                  placeholder={t('plan.totalPlaceholder')}
+                  value={totalUnits}
+                  onChange={(e) => setTotalUnits(e.target.value)}
+                  aria-label={t('plan.total')}
+                />
+              </label>
+              <label className="min-w-0 flex-1 space-y-1">
+                <span className="px-1 text-xs text-zinc-400">{t('plan.unit')}</span>
+                <TextInput
+                  placeholder={t('plan.unitPlaceholder')}
+                  value={unitLabel}
+                  onChange={(e) => setUnitLabel(e.target.value)}
+                  aria-label={t('plan.unit')}
+                />
+              </label>
             </div>
             <MaterialTagPicker value={tags} onChange={setTags} />
             <p className="text-xs text-zinc-400">{t('plan.materialFormHint')}</p>
@@ -828,20 +832,26 @@ function MaterialsSection({
             onChange={(e) => setName(e.target.value)}
           />
           <div className="flex gap-3">
-            <TextInput
-              placeholder={t('plan.unitPlaceholder')}
-              value={unitLabel}
-              onChange={(e) => setUnitLabel(e.target.value)}
-              aria-label={t('plan.unit')}
-            />
-            <TextInput
-              type="number"
-              min={1}
-              placeholder={t('plan.totalPlaceholder')}
-              value={totalUnits}
-              onChange={(e) => setTotalUnits(e.target.value)}
-              aria-label={t('plan.total')}
-            />
+            <label className="w-[32%] shrink-0 space-y-1">
+              <span className="px-1 text-xs text-zinc-400">{t('plan.total')}</span>
+              <TextInput
+                type="number"
+                min={1}
+                placeholder={t('plan.totalPlaceholder')}
+                value={totalUnits}
+                onChange={(e) => setTotalUnits(e.target.value)}
+                aria-label={t('plan.total')}
+              />
+            </label>
+            <label className="min-w-0 flex-1 space-y-1">
+              <span className="px-1 text-xs text-zinc-400">{t('plan.unit')}</span>
+              <TextInput
+                placeholder={t('plan.unitPlaceholder')}
+                value={unitLabel}
+                onChange={(e) => setUnitLabel(e.target.value)}
+                aria-label={t('plan.unit')}
+              />
+            </label>
           </div>
           {!showTagOptions ? (
             <button

@@ -27,3 +27,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.vercel
+
+# Supabase CLI local state
+supabase/.branches
+supabase/.temp

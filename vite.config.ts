@@ -2,10 +2,15 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { localGeneratePlanApi } from './scripts/vite-api-plugin.ts'
 
 export default defineConfig({
   server: {
     port: 5173,
+    strictPort: true,
+  },
+  preview: {
+    port: 4173,
     strictPort: true,
   },
   build: {
@@ -35,11 +40,20 @@ export default defineConfig({
     },
   },
   plugins: [
+    localGeneratePlanApi(),
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'logo.png', 'apple-touch-icon-180x180.png', 'pwa-64x64.png', 'pwa-192x192.png', 'pwa-512x512.png', 'maskable-icon-512x512.png'],
+      includeAssets: [
+        'favicon.ico',
+        'logo.png',
+        'apple-touch-icon-180x180.png',
+        'pwa-64x64.png',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+        'maskable-icon-512x512.png',
+      ],
       manifest: {
         id: 'ganbalog',
         name: 'GanbaLog — Daily Study Schedule',
@@ -88,6 +102,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         importScripts: ['sw-reminder.js'],
       },
     }),

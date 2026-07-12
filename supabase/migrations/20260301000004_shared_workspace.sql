@@ -26,6 +26,10 @@ where user_id is null;
 
 -- Tasks: each user sees/edits only their rows
 drop policy if exists tasks_all on tasks;
+drop policy if exists tasks_select on tasks;
+drop policy if exists tasks_insert on tasks;
+drop policy if exists tasks_update on tasks;
+drop policy if exists tasks_delete on tasks;
 create policy tasks_select on tasks for select
   using (
     user_id = auth.uid()
@@ -62,6 +66,10 @@ create policy tasks_delete on tasks for delete
 
 -- Study logs: members read all in workspace; write own only
 drop policy if exists study_logs_all on study_logs;
+drop policy if exists study_logs_select on study_logs;
+drop policy if exists study_logs_insert on study_logs;
+drop policy if exists study_logs_update on study_logs;
+drop policy if exists study_logs_delete on study_logs;
 create policy study_logs_select on study_logs for select
   using (
     exists (
@@ -84,6 +92,7 @@ create policy study_logs_delete on study_logs for delete
   using (user_id = auth.uid());
 
 -- Workspace update for invite code regeneration (members only)
+drop policy if exists workspaces_update on workspaces;
 create policy workspaces_update on workspaces for update
   using (public.is_workspace_member(id))
   with check (public.is_workspace_member(id));

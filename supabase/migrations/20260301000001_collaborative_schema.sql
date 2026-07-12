@@ -155,12 +155,16 @@ alter table study_logs enable row level security;
 alter table audit_events enable row level security;
 
 -- Workspaces: members can read; authenticated users can create
+drop policy if exists workspaces_select on workspaces;
+drop policy if exists workspaces_insert on workspaces;
 create policy workspaces_select on workspaces for select
   using (public.is_workspace_member(id));
 create policy workspaces_insert on workspaces for insert
   with check (auth.uid() is not null);
 
 -- Profiles: workspace co-members can read; owner can upsert self
+drop policy if exists profiles_select on user_profiles;
+drop policy if exists profiles_upsert on user_profiles;
 create policy profiles_select on user_profiles for select
   using (
     id = auth.uid()
@@ -175,17 +179,29 @@ create policy profiles_upsert on user_profiles for all
   with check (id = auth.uid());
 
 -- Members
+drop policy if exists members_select on workspace_members;
+drop policy if exists members_insert on workspace_members;
 create policy members_select on workspace_members for select
   using (public.is_workspace_member(workspace_id));
 create policy members_insert on workspace_members for insert
   with check (auth.uid() is not null);
 
 -- Preferences: own rows only
+drop policy if exists preferences_all on user_preferences;
 create policy preferences_all on user_preferences for all
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
 -- Plans & children: workspace members full access
+drop policy if exists plans_all on plans;
+drop policy if exists materials_all on materials;
+drop policy if exists material_units_all on material_units;
+drop policy if exists schedule_all on schedule_items;
+drop policy if exists tasks_all on tasks;
+drop policy if exists checkpoints_all on checkpoints;
+drop policy if exists study_logs_all on study_logs;
+drop policy if exists audit_all on audit_events;
+
 create policy plans_all on plans for all
   using (public.is_workspace_member(workspace_id))
   with check (public.is_workspace_member(workspace_id));
@@ -230,12 +246,19 @@ create policy audit_all on audit_events for all
   using (public.is_workspace_member(workspace_id))
   with check (public.is_workspace_member(workspace_id));
 
--- Realtime publication (enable in Supabase dashboard if needed)
-alter publication supabase_realtime add table plans;
-alter publication supabase_realtime add table materials;
-alter publication supabase_realtime add table material_units;
-alter publication supabase_realtime add table schedule_items;
-alter publication supabase_realtime add table tasks;
-alter publication supabase_realtime add table checkpoints;
-alter publication supabase_realtime add table study_logs;
-alter publication supabase_realtime add table audit_events;
+-- Realtime publication (idempotent)
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'plans', 'materials', 'material_units', 'schedule_items',
+    'tasks', 'checkpoints', 'study_logs', 'audit_events'
+  ]
+  loop
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+    exception when duplicate_object then null;
+    end;
+  end loop;
+end $$;

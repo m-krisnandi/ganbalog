@@ -28,6 +28,7 @@ import type {
   WorkspaceRepository,
 } from '../../domain/repositories'
 import type { MutableActorContext } from '../../core/session/actor-context'
+import { isSupabaseUuid } from './ids'
 import {
   mapAuditEvent,
   mapAuditInsert,
@@ -59,6 +60,7 @@ export class SupabasePlanRepository implements PlanRepository {
   constructor(private readonly client: SupabaseClient) {}
 
   async getByWorkspace(workspaceId: Id): Promise<Plan[]> {
+    if (!isSupabaseUuid(workspaceId)) return []
     const { data, error } = await this.client
       .from('plans')
       .select('*')
@@ -413,6 +415,7 @@ export class SupabaseUserPreferenceRepository implements UserPreferenceRepositor
   constructor(private readonly client: SupabaseClient) {}
 
   async get(userId: Id, workspaceId: Id, key: string): Promise<string | undefined> {
+    if (!isSupabaseUuid(userId) || !isSupabaseUuid(workspaceId)) return undefined
     const { data, error } = await this.client
       .from('user_preferences')
       .select('value')
@@ -425,6 +428,7 @@ export class SupabaseUserPreferenceRepository implements UserPreferenceRepositor
   }
 
   async set(userId: Id, workspaceId: Id, key: string, value: string): Promise<void> {
+    if (!isSupabaseUuid(userId) || !isSupabaseUuid(workspaceId)) return
     const { error } = await this.client.from('user_preferences').upsert({
       user_id: userId,
       workspace_id: workspaceId,

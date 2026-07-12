@@ -4,24 +4,32 @@ import type { Id, IsoDate, Weekday } from '../domain/models'
 import type { MaterialTagId } from '../domain/material-tags'
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 
-export type StudyTemplateId = 'jlpt-n2' | 'jlpt-n1' | 'toeic-800' | 'ielts-65'
+export type StudyTemplateId =
+  | 'jlpt-n2'
+  | 'jlpt-n1'
+  | 'bjt'
+  | 'toeic-800'
+  | 'ielts-65'
+  | 'toefl'
 
 /** i18n slug under `templates.*` */
-export type TemplateI18nSlug = 'jlptN2' | 'jlptN1' | 'toeic800' | 'ielts65'
+export type TemplateI18nSlug = 'jlptN2' | 'jlptN1' | 'bjt' | 'toeic800' | 'ielts65' | 'toefl'
 
 export const TEMPLATE_I18N_SLUG: Record<StudyTemplateId, TemplateI18nSlug> = {
   'jlpt-n2': 'jlptN2',
   'jlpt-n1': 'jlptN1',
+  bjt: 'bjt',
   'toeic-800': 'toeic800',
   'ielts-65': 'ielts65',
+  toefl: 'toefl',
 }
 
 export const TEMPLATE_GROUPS: ReadonlyArray<{
   labelKey: string
   ids: readonly StudyTemplateId[]
 }> = [
-  { labelKey: 'templates.groups.japanese', ids: ['jlpt-n2', 'jlpt-n1'] },
-  { labelKey: 'templates.groups.english', ids: ['toeic-800', 'ielts-65'] },
+  { labelKey: 'templates.groups.japanese', ids: ['jlpt-n2', 'jlpt-n1', 'bjt'] },
+  { labelKey: 'templates.groups.english', ids: ['toeic-800', 'ielts-65', 'toefl'] },
 ]
 
 export interface StudyTemplate {
@@ -210,18 +218,103 @@ export const IELTS_65_TEMPLATE: StudyTemplate = {
   ],
 }
 
+export const BJT_TEMPLATE: StudyTemplate = {
+  id: 'bjt',
+  plan: {
+    name: 'BJT (Business Japanese) — June 2027',
+    description:
+      '5-month Business Japanese / ビジネス日本語 (BJT) prep. Months 1–2: keigo & business vocab. Months 3–4: reading/listening cases. Month 5: full mocks & weak areas.',
+    startDate: '2027-01-05',
+    targetDate: '2027-06-06',
+  },
+  materials: [
+    { name: 'BJT Official Guide / 公式問題集', unitLabel: 'tests', totalUnits: 3, tags: ['mock'] },
+    { name: 'Business keigo workbook', unitLabel: 'chapters', totalUnits: 20, tags: ['grammar'] },
+    { name: 'Business reading (メール・文書)', unitLabel: 'passages', totalUnits: 40, tags: ['reading'] },
+    { name: 'Business listening drills', unitLabel: 'sets', totalUnits: 30, tags: ['listening'] },
+    { name: 'Business vocab 1500', unitLabel: 'words', totalUnits: 1500, tags: ['vocab'] },
+    { name: 'Role-play / speaking notes', unitLabel: 'sessions', totalUnits: 20, tags: ['other'] },
+  ],
+  weekly: [
+    { weekday: 1, title: 'Keigo workbook — 1 chapter', materialIndex: 1 },
+    { weekday: 1, title: 'Business vocab — 25 words', materialIndex: 4 },
+    { weekday: 2, title: 'Reading — 2 business passages', materialIndex: 2 },
+    { weekday: 3, title: 'Listening — 1 drill set', materialIndex: 3 },
+    { weekday: 3, title: 'Business vocab — 25 words', materialIndex: 4 },
+    { weekday: 4, title: 'Reading OR email writing practice', materialIndex: 2 },
+    { weekday: 5, title: 'Listening timed set + review', materialIndex: 3 },
+    { weekday: 6, title: 'Role-play session OR weekly reflection', materialIndex: 5 },
+  ],
+  checkpoints: [
+    { title: 'Month 1 — Keigo ch. 1–6 + 300 vocab', dueDate: '2027-02-05' },
+    { title: 'Month 2 — Keigo half + reading rhythm', dueDate: '2027-03-05' },
+    { title: 'Month 3 — First official mock + weak log', dueDate: '2027-04-02' },
+    { title: 'Month 4 — Listening cases + 1000 vocab', dueDate: '2027-05-07' },
+    { title: 'Month 5 — Full mocks + exam pace', dueDate: '2027-06-01' },
+  ],
+  previewTasks: [
+    'Keigo workbook — 1 chapter',
+    'Business vocab — 25 words',
+    'Listening — 1 drill set',
+  ],
+}
+
+export const TOEFL_TEMPLATE: StudyTemplate = {
+  id: 'toefl',
+  plan: {
+    name: 'TOEFL iBT 90 — May 2027',
+    description:
+      '5-month TOEFL iBT prep targeting ~90. Build reading/listening base, then integrated speaking & writing. Monthly full practice tests.',
+    startDate: '2026-12-07',
+    targetDate: '2027-05-08',
+  },
+  materials: [
+    { name: 'Official TOEFL iBT Practice Tests', unitLabel: 'tests', totalUnits: 4, tags: ['mock'] },
+    { name: 'Reading practice passages', unitLabel: 'passages', totalUnits: 40, tags: ['reading'] },
+    { name: 'Listening lectures & conversations', unitLabel: 'sets', totalUnits: 36, tags: ['listening'] },
+    { name: 'Speaking (independent + integrated)', unitLabel: 'tasks', totalUnits: 28, tags: ['other'] },
+    { name: 'Writing (integrated + academic)', unitLabel: 'essays', totalUnits: 24, tags: ['grammar'] },
+    { name: 'Academic vocab bank', unitLabel: 'words', totalUnits: 600, tags: ['vocab'] },
+  ],
+  weekly: [
+    { weekday: 1, title: 'Reading — 1–2 passages timed', materialIndex: 1 },
+    { weekday: 1, title: 'Vocab — 15 words', materialIndex: 5 },
+    { weekday: 2, title: 'Listening — 1 lecture set', materialIndex: 2 },
+    { weekday: 3, title: 'Speaking — 1 independent + 1 integrated', materialIndex: 3 },
+    { weekday: 4, title: 'Writing — 1 integrated OR academic essay', materialIndex: 4 },
+    { weekday: 5, title: 'Reading OR listening weak area', materialIndex: 1 },
+    { weekday: 6, title: 'Weekly reflection + vocab recycle', materialIndex: null },
+  ],
+  checkpoints: [
+    { title: 'Month 1 — Reading rhythm + 120 vocab', dueDate: '2027-01-08' },
+    { title: 'Month 2 — Listening base + speaking log', dueDate: '2027-02-05' },
+    { title: 'Month 3 — First full practice test', dueDate: '2027-03-05' },
+    { title: 'Month 4 — Writing feedback loop + test 2', dueDate: '2027-04-02' },
+    { title: 'Month 5 — Tests 3–4 + exam simulation', dueDate: '2027-05-01' },
+  ],
+  previewTasks: [
+    'Reading — 1–2 passages timed',
+    'Vocab — 15 words',
+    'Speaking — 1 independent + 1 integrated',
+  ],
+}
+
 export const STUDY_TEMPLATES: Record<StudyTemplateId, StudyTemplate> = {
   'jlpt-n2': JLPT_N2_TEMPLATE,
   'jlpt-n1': JLPT_N1_TEMPLATE,
+  bjt: BJT_TEMPLATE,
   'toeic-800': TOEIC_800_TEMPLATE,
   'ielts-65': IELTS_65_TEMPLATE,
+  toefl: TOEFL_TEMPLATE,
 }
 
 export const STUDY_TEMPLATE_IDS: StudyTemplateId[] = [
   'jlpt-n2',
   'jlpt-n1',
+  'bjt',
   'toeic-800',
   'ielts-65',
+  'toefl',
 ]
 
 export function getStudyTemplate(id: StudyTemplateId): StudyTemplate {

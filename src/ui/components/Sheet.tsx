@@ -97,27 +97,27 @@ export function Sheet({ open, title, onClose, children, toolbar, footer }: Sheet
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 32, stiffness: 380 }}
           >
-            <div className="shrink-0 flex justify-center pt-3 pb-1">
+            <div className="shrink-0 flex justify-center pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-1">
               <div className="h-1 w-10 rounded-full bg-zinc-300 dark:bg-zinc-600" />
             </div>
 
-            <div className="shrink-0 flex items-center justify-between px-5 pb-3">
-              <h2 id={titleId} className="text-base font-semibold">
+            <div className="shrink-0 flex items-center justify-between gap-3 px-5 pt-1 pb-2">
+              <h2 id={titleId} className="min-w-0 flex-1 text-base font-semibold leading-snug">
                 {title}
               </h2>
               <button
                 type="button"
                 onClick={onClose}
                 aria-label={t('common.close')}
-                className="cursor-pointer rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+                className="cursor-pointer shrink-0 rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {toolbar && <div className="shrink-0 px-5 pb-3">{toolbar}</div>}
+            {toolbar && <div className="shrink-0 px-5 pb-3 pt-0.5">{toolbar}</div>}
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 pb-3">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 pt-1.5 pb-3">
               {children}
             </div>
 
